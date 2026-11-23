@@ -5787,7 +5787,7 @@ let
     && ev.exactAt == ev.position
     && isAttrs t
     && !(keyedOverAt loc t)
-    && containerAt loc t;
+    && containerAtWalked ev loc t;
   # An ATTRIBUTE-KEYED container of gen's own (`lazyAttrsOf`, or an `attrsOf` whose element is not
   # itself keyed over-approximately, or a stock one re-homed as one) at an exact container's element
   # is keyed OVER-APPROXIMATELY in the enclosing group: its candidate keys are the attribute names of
@@ -5903,7 +5903,7 @@ let
               let
                 minted = containerNodeAt ev;
               in
-              if !(containerAt loc self) || minted == null then
+              if !(containerAtWalked ev loc self) || minted == null then
                 t.mergeDefs.threaded ev loc defs
               else if !(builtins.isBool minted) then
                 throw (accessorUnansweredRefusal loc self)
@@ -5939,7 +5939,7 @@ let
     "gen-merge: `evalModuleTree': option `${showOption loc}': its type `${t.name or "<container>"}' folds as a container, but the evaluation accessor its fold was handed does not state what the key walk minted here: a container's threaded fold above it rebuilt or narrowed the site its accessor's `child' receives. Extend the accessor it was handed (`ev // { position = …; }`) and pass `child' its site whole";
   threadedUnder =
     ev: loc: t:
-    if containerAt loc t then
+    if containerAtWalked ev loc t then
       let
         read = (ev.child { inherit (ev) position; }).value;
       in
@@ -5972,7 +5972,9 @@ let
     containerNodes = true;
     child =
       site:
-      if site ? __genMergeMinted then
+      if site ? __genMergeNest then
+        (host.result._nested.positions.${group}.${builtins.toJSON site.position} or { }).nest or null
+      else if site ? __genMergeMinted then
         let
           r = host.result._nested.positions.${group}.${builtins.toJSON site.position} or null;
         in
@@ -6062,6 +6064,23 @@ let
   # elements itself, and every other container's fold reads what the walk minted at its position
   # (`readsMintedNode`, at the `defineType` door). `nullOr` at the position itself adds no step and is
   # looked through by both, never promoted.
+  # `containerAt` at a fold's position, off the `canNest` walk the key walk read there (`nest`, on the record it minted
+  # at the position, den-hoag-03kig arm C): the fold reads the type the walk keyed, so a level is answered once. An
+  # accessor that states no such record answers by the type's own walk.
+  containerAtWalked =
+    ev: loc: t:
+    let
+      n =
+        if ev.containerNodes or false then
+          ev.child {
+            inherit (ev) position;
+            __genMergeMinted = true;
+            __genMergeNest = true;
+          }
+        else
+          null;
+    in
+    if isAttrs n && n ? ans then containerAtF loc t n else containerAt loc t;
   containerAt =
     loc: t:
     isAttrs t
@@ -6082,6 +6101,47 @@ let
       containerMemberAt loc m.carries.element
     else
       containerAt loc m;
+  # `containerAt` with `t`'s `canNest` walk handed in (`interface.nestFact`): the key walk hands each level the one it
+  # read above it (den-hoag-03kig arm C), and each member's is its `below`.
+  containerAtF =
+    loc: t: nf:
+    isAttrs t
+    && !(interface.isNesting t)
+    && nf.ans
+    && (
+      if t ? choose then
+        let
+          alts = t.carries.alternatives or [ ];
+          n = length alts;
+        in
+        any (
+          i:
+          containerMemberAtF loc (prelude.elemAt alts i) (interface.nestBelow nf n i (prelude.elemAt alts i))
+        ) (prelude.genList (i: i) n)
+      else
+        !((t.mergeDefs.container or null) == "nullOr" && t ? carries.element) && t ? split
+    );
+  containerMemberAtF =
+    loc: t0: f0:
+    let
+      m = interface.homedAt "evalModuleTree" loc t0;
+      mf = homedFact t0 m f0;
+    in
+    if isAttrs m && (m.mergeDefs.container or null) == "nullOr" && m ? carries.element then
+      containerMemberAtF loc m.carries.element (interface.nestBelow mf 1 0 m.carries.element)
+    else
+      containerAtF loc m mf;
+  # The walk's fact of `m`, homed from `t0` whose fact is `f0`: `homedAt`'s first arm returns `t0` itself (gen's own
+  # record, a checker, a threaded foreign one, a nesting type), so `f0` is `m`'s; any other record is re-homed, and
+  # its own walk answers.
+  homedFact =
+    t0: m: f0:
+    if
+      !(isAttrs t0) || t0 ? verify || t0 ? carries || t0 ? __threadedForeign || interface.isNesting t0
+    then
+      f0
+    else
+      interface.nestFact m;
 
   # The member a union's fold folds through: `choose`, repeated through nested unions; `null` where
   # no member takes every definition (the fold's refusal).
@@ -6158,9 +6218,12 @@ let
   # Only an EXACT container's elements have their definitions forced to key them, as that
   # container's own fold forces them; an over-approximated position's definitions are a thunk,
   # read when its seed is.
+  keyWalkRoot =
+    under: group: t:
+    keyWalk under group t (interface.nestFact t);
   keyWalk =
-    under: group: t: pos: loc: defs:
-    if !(isAttrs t) || !(interface.canNest t) then
+    under: group: t: nf: pos: loc: defs:
+    if !(isAttrs t) || !nf.ans then
       [ ]
     else if interface.isNesting t then
       [
@@ -6177,18 +6240,19 @@ let
       # its element's over the same definitions, so keying the element forces nothing the read does
       # not (den-hoag-t1j4z, ADR-0039). It is walked as the root is. Below a step it is a container
       # node (the next arm).
-      keyWalk null group t pos loc defs
-    else if under != null && containerAt loc t then
+      keyWalk null group t nf pos loc defs
+    else if under != null && containerAtF loc t nf then
       [
         {
           key = pos;
           type = t;
           member = t;
           container = true;
+          nest = nf;
           inherit loc defs;
         }
       ]
-    else if under == null && pos != [ ] && keyedOverAt loc t && containerAt loc t then
+    else if under == null && pos != [ ] && keyedOverAt loc t && containerAtF loc t nf then
       # KEYED OVER-APPROXIMATELY: an attribute-keyed container at an exact container's element. Its
       # candidate keys are its definitions' attribute names, with no definedness pass, and its
       # elements are walked in the over-approximating regime (`under = "lazyAttrsOf"`), whose
@@ -6199,6 +6263,7 @@ let
       # none.
       if admitsAll t.admits defs then
         let
+          ef = interface.nestBelow nf 1 0 t.carries.element;
           # Each key's definitions, grouped once (as `mergeTree`'s `defsByKey`), in `defs`' order, so
           # each key is answered by a lookup rather than a scan of `defs`.
           defsByKey = builtins.zipAttrsWith (_: vs: vs) (
@@ -6214,13 +6279,16 @@ let
         in
         concatMap (
           k:
-          keyWalk "lazyAttrsOf" group (interface.homedAt "evalModuleTree" (loc ++ [ k ]) t.carries.element) (
-            pos ++ [ k ]
-          ) (loc ++ [ k ]) (addressedDefs defsByKey.${k})
+          let
+            ce = interface.homedAt "evalModuleTree" (loc ++ [ k ]) t.carries.element;
+          in
+          keyWalk "lazyAttrsOf" group ce (homedFact t.carries.element ce ef) (pos ++ [ k ]) (loc ++ [ k ]) (
+            addressedDefs defsByKey.${k}
+          )
         ) (attrNames defsByKey)
       else
         [ ]
-    else if under == null && pos != [ ] && containerAt loc t then
+    else if under == null && pos != [ ] && containerAtF loc t nf then
       # KEYED WHERE READ: any other container at an exact container's element (a union's `choose`, a
       # foreign container's own merge, a list's indices, which are the positions its definedness
       # pass leaves, another split container's own `split`, or an `attrsOf` over a container, whose
@@ -6233,16 +6301,17 @@ let
           type = t;
           member = t;
           container = true;
+          nest = nf;
           inherit loc defs;
         }
       ]
-    else if under == null && t ? choose && containerAt loc t then
+    else if under == null && t ? choose && containerAtF loc t nf then
       # At the walk's own root (an option's position, or a node's) the position IS the one read, and
       # a union holding a container member is keyed by the member its `choose` takes, as its fold is.
       let
         c = chosenAt loc defs t;
       in
-      if c == null then [ ] else keyWalk null group c pos loc defs
+      if c == null then [ ] else keyWalkRoot null group c pos loc defs
     else if t ? choose then
       map (
         r:
@@ -6251,15 +6320,18 @@ let
           type = t;
           member = memberChain t (drop (length pos) r.key) loc defs;
         }
-      ) (unionKeys under group t pos loc defs t)
+      ) (unionKeys under group t pos loc defs t nf)
     else if !(t ? split) then
       [ ]
     else if under != null then
       (
         if (t.mergeDefs.container or null) == "nullOr" && t ? carries.element then
-          keyWalk under group (interface.homedAt "evalModuleTree" loc t.carries.element) pos loc (
-            filter (d: d.value != null) defs
-          )
+          let
+            ce = interface.homedAt "evalModuleTree" loc t.carries.element;
+          in
+          keyWalk under group ce (homedFact t.carries.element ce (
+            interface.nestBelow nf 1 0 t.carries.element
+          )) pos loc (filter (d: d.value != null) defs)
         else
           throw (stepContainerInvariantRefusal group under t)
       )
@@ -6272,7 +6344,13 @@ let
       in
       concatMap (
         e:
-        keyWalk (if exact then null else name) group (interface.homedAt "evalModuleTree" e.loc e.type)
+        let
+          ce = interface.homedAt "evalModuleTree" e.loc e.type;
+        in
+        # the element `split` hands is the one the record declares (`carries.element`, its constructor's one
+        # binding), so the walk's own fact of it is the record's `below` (den-hoag-03kig arm C)
+        keyWalk (if exact then null else name) group ce
+          (homedFact e.type ce (interface.nestBelow nf 1 0 e.type))
           (pos ++ e.step)
           e.loc
           (
@@ -6317,13 +6395,19 @@ let
   # `keyWalk` walks the union as the root is. So a container member reached here with `under` set is
   # an invariant refusal.
   unionKeys =
-    under: group: u: pos: loc: defs: t:
+    under: group: u: pos: loc: defs: t: tf:
+    let
+      alts = t.carries.alternatives or [ ];
+      n = length alts;
+    in
     concatMap (
-      mt0:
+      i:
       let
+        mt0 = prelude.elemAt alts i;
         mt = interface.homedAt "evalModuleTree" loc mt0;
+        mf = homedFact mt0 mt (interface.nestBelow tf n i mt0);
       in
-      if !(isAttrs mt) || !(interface.canNest mt) then
+      if !(isAttrs mt) || !mf.ans then
         [ ]
       else if interface.isNesting mt then
         [
@@ -6333,18 +6417,22 @@ let
           }
         ]
       else if mt ? choose then
-        unionKeys under group u pos loc defs mt
+        unionKeys under group u pos loc defs mt mf
       else if !(mt ? split) then
         [ ]
       else if (mt.mergeDefs.container or null) == "nullOr" && mt ? carries.element then
-        unionKeys under group u pos loc (if under == null then filter (d: d.value != null) defs else defs) {
-          carries.alternatives = [ mt.carries.element ];
-        }
+        unionKeys under group u pos loc (if under == null then filter (d: d.value != null) defs else defs)
+          {
+            carries.alternatives = [ mt.carries.element ];
+          }
+          {
+            below = [ (interface.nestBelow mf 1 0 mt.carries.element) ];
+          }
       else if under != null then
         throw (unionStepContainerInvariantRefusal group under u pos mt)
       else
         [ ]
-    ) (t.carries.alternatives or [ ]);
+    ) (prelude.genList (i: i) n);
 
   # ★ GROWTH OVER EMPTY SEEDS, REFUSED BY NAME (den-hoag-n6dh7 item 4; OQ15's default (c),
   # *defaulted, reversible*). A child with an empty seed whose own walk keys an empty-seed position
@@ -6483,6 +6571,7 @@ let
                   member
                   defs
                   ;
+                ${if r ? nest then "nest" else null} = r.nest;
                 group = g;
                 address = map (d: {
                   attr = "definitions";
@@ -6494,7 +6583,7 @@ let
               }
           )
           (
-            keyWalk null g.loc
+            keyWalkRoot null g.loc
               (
                 if
                   g.type ? carries
@@ -7544,7 +7633,7 @@ let
       p = self.getHostAt "positions";
       # Its definitions off the host's position record, as a tree's (`childTree`, arm (B)).
       defs = map (d: { inherit (d) file value; }) p.defs;
-      records = keyWalk null p.loc p.member [ ] p.loc (
+      records = keyWalk null p.loc p.member (p.nest or (interface.nestFact p.member)) [ ] p.loc (
         prelude.imap0 (
           i: d:
           d
@@ -7566,6 +7655,7 @@ let
               member
               defs
               ;
+            ${if r ? nest then "nest" else null} = r.nest;
             inherit (p) group;
             address = map (d: {
               attr = "definitions";

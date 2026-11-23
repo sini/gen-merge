@@ -1873,6 +1873,70 @@ let
     in
     go importedTypeWalkFuel;
 
+  # `canNest`'s walk, keeping what it read, for a walk that descends the same type (den-hoag-03kig arm C):
+  # `ans` is `canNest`'s answer at the fuel given, `exact` whether it holds at every larger fuel (a `false`,
+  # or a `true` its first true element reached before any exhaustion), and `below` the same for each type
+  # `declaredWrapped` lists, in its order, at one less fuel. The key walk hands a level's `below` to the
+  # level under it (`nestBelow`), so each level is answered once per walk, and nothing is stated on a
+  # record: a record rebuilt with `//` is read as it is, and a cycle is bounded by the fuel as `canNest` is.
+  nestFact =
+    let
+      decided = ans: {
+        inherit ans;
+        exact = true;
+        below = [ ];
+      };
+      go =
+        fuel: t:
+        if !(isAttrs t) then
+          decided false
+        else if isNesting t || t ? __threadedForeign then
+          decided true
+        else if t ? canNest then
+          decided t.canNest
+        else
+          let
+            wrapped = declaredWrapped t;
+          in
+          if wrapped == [ ] then
+            decided false
+          else if fuel <= 0 then
+            {
+              ans = true;
+              exact = false;
+              below = [ ];
+            }
+          else
+            let
+              below = map (go (fuel - 1)) wrapped;
+              # the first element answering `true`, in order, as `canNest`'s `any` reads them
+              hit =
+                i:
+                if i == length below then
+                  null
+                else if (elemAt below i).ans then
+                  elemAt below i
+                else
+                  hit (i + 1);
+              first = hit 0;
+            in
+            {
+              ans = first != null;
+              exact = first == null || first.exact;
+              inherit below;
+            };
+    in
+    go importedTypeWalkFuel;
+
+  # The fact of the `i`-th of the `n` types a record with fact `f` declares it wraps, for a walk descending
+  # to `c`, which IS that type: the record's own `below` where it answers at every fuel, else `c`'s own walk.
+  nestBelow =
+    f: n: i: c:
+    if length f.below == n && (!(elemAt f.below i).ans || (elemAt f.below i).exact) then
+      elemAt f.below i
+    else
+      nestFact c;
+
   # Does this container's element chain end at a leaf? `canNest`'s `false`, read off the record by presence: each level
   # carries one element and states no other role and no nesting (`nests`, `__threadedForeign`), and the last element
   # declares nothing it wraps, read as `declaredWrapped` reads it and in its order (`carries`, then `nestedTypes` unless
@@ -9806,6 +9870,8 @@ in
     keyedUnderEmbedding
     moduleSetPayload
     canNest
+    nestFact
+    nestBelow
     chainEndsAtLeaf
     declaresNesting
     homedAt

@@ -3234,8 +3234,6 @@ in
               ]
               {
                 name = "postFold";
-                # its walk answer is its element's: `canNest` reads it here once per record, not once per walk through it
-                canNest = interface.canNest element;
                 # `g` over the element's own empty value (`g ∘ fold []`), as `core.whenEmptyOf` reads it (the record
                 # nixpkgs keeps); an element with no empty value leaves the option undefined, as the element does
                 whenEmpty =
