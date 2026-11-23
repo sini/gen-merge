@@ -4466,8 +4466,8 @@ let
   # `//` over it is honoured. Below a root that states no module set the rebuild reaches nothing and the
   # record written is read, its own field: `threadedAs`' `whenEmpty` asks the root on the
   # positions an `evAt` accessor folds, and this position-free read answers everywhere else (the bridge,
-  # the called fold; den-hoag-vy14u, den-hoag-ubinn; the freeform plane's single definition, den-hoag-6dxwr). `whenEmpty` alone answers only for a record that
-  # states no foreign field, the engine's own bound records (den-hoag-omf1j).
+  # the called fold; den-hoag-vy14u, den-hoag-ubinn). `whenEmpty` alone answers only for a record that states no
+  # foreign field, the engine's own bound records (den-hoag-omf1j).
   whenEmptyOf = interface.keptEmpty;
   emptyValueOr =
     type: err:
@@ -5965,8 +5965,11 @@ let
   # nixpkgs' fix-up REBUILD the record at its position (`threadedAs`' `whenEmpty`, den-hoag-vy14u): does the ROOT of the
   # position's group state a module set? Where it states none the record is the one written there. A container node's root is its
   # own position record's group's, any other position's the group of the walk's record there, and a position the walk
-  # minted nothing at reads as rebuilt (`true`, the position-free read). It is read off records the walk already
-  # holds, so the accessor carries nothing for it, and a position read with a definition never asks.
+  # minted nothing at reads as rebuilt (`true`, the position-free read). The freeform group has no root to ask: nixpkgs
+  # fixes up no freeform type (`interface.isOptionRoot`), whose record is the value `optionType.merge` already kept
+  # (one declaration) or rebuilt (several; `mergeTypeDefs` mirrors it), so every position on its plane holds the
+  # record written there (den-hoag-6dxwr). It is read off records the walk already holds, so the accessor carries
+  # nothing for it, and a position read with a definition never asks.
   evAt = host: group: {
     position = [ ];
     containerNodes = true;
@@ -5981,14 +5984,14 @@ let
         host.result._nested.positions.${group}
       else if site ? containerNodes then
         let
-          root =
+          g =
             if group == "container" then
-              (host.reader.getHostAt "positions").group.type
+              (host.reader.getHostAt "positions").group
             else
               (host.result._nested.positions.${group}.${builtins.toJSON site.position} or { group.type = null; })
-              .group.type;
+              .group;
         in
-        root == null || interface.rebuildsRecord root
+        (g.name or group) != "freeform" && (g.type == null || interface.rebuildsRecord g.type)
       else
         host.reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
   };

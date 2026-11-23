@@ -62,6 +62,59 @@ let
       };
     };
   off = L: [ (L.mkIf false [ ]) ];
+  # `both` over any module list: `mods L door` is read on gen's engine with `door` and on nixpkgs' with none (a door
+  # wraps a gen record: `mkOptionType`, `types.mkOptionType`)
+  bothMods =
+    {
+      mods,
+      read,
+      door ? r: r,
+    }:
+    {
+      gen = try (read (gm.evalModuleTree { } (mods gm door)).config);
+      np = try (read (nixpkgsLib.evalModules { modules = mods nixpkgsLib (r: r); }).config);
+    };
+  # THE FREEFORM TWIN: the plane `lazyAttrsOf^(d+1) (record L // ov)` declared `n` times (at `_module.freeformType`
+  # with `mod`), `ov` on the declarations `carries` picks (every one by default), the key `k` (`k.j…` at depth `d`)
+  # defined only by `mkIf false`
+  bothFF =
+    {
+      record,
+      ov ? { },
+      d ? 0,
+      n ? 1,
+      carries ? _: true,
+      mod ? false,
+      door ? r: r,
+    }:
+    let
+      at = [ "k" ] ++ builtins.genList (_: "j") d;
+      lazy =
+        L: k: ty:
+        if k == 0 then ty else lazy L (k - 1) ((tys L).lazyAttrsOf ty);
+    in
+    bothMods {
+      inherit door;
+      mods =
+        L: dr:
+        builtins.genList (
+          i:
+          let
+            ty = lazy L (d + 1) (dr (record L // (if carries i then ov else { })));
+          in
+          if mod then { _module.freeformType = ty; } else { freeformType = ty; }
+        ) n
+        ++ [ { config = nixpkgsLib.setAttrByPath at (L.mkIf false [ ]); } ];
+      read = nixpkgsLib.attrByPath at "<absent>";
+    };
+  evNone = {
+    emptyValue = { };
+  };
+  evVal = {
+    emptyValue.value = "EV";
+  };
+  listSub = L: (tys L).listOf (sub L);
+  attrsSub = L: (tys L).attrsOf (sub L);
 in
 {
   flake.tests.empty-value-kept-record = {
@@ -336,6 +389,195 @@ in
         read = c: c.o.k.q.z;
       };
       expected = same [ ];
+    };
+    # THE FREEFORM PLANE IS FIXED UP FROM NO ROOT (den-hoag-6dxwr): nixpkgs' `freeformConfig` merges the plane by its
+    # `freeformType` and nothing fixes that type up, so one declaration keeps the record written (a `//` over its
+    # `emptyValue` honoured, a module set stated or not), and several keep their join (`mergeOptionDecls`).
+    test-freeform-listOf-sub-emptyValue-value-serves = {
+      expr = bothFF {
+        record = listSub;
+        ov = evVal;
+      };
+      expected = same "EV";
+    };
+    test-freeform-listOf-sub-emptyValue-none-refuses = {
+      expr = bothFF {
+        record = listSub;
+        ov = evNone;
+      };
+      expected = same "<R>";
+    };
+    test-freeform-attrsOf-sub-emptyValue-value-serves = {
+      expr = bothFF {
+        record = attrsSub;
+        ov = evVal;
+      };
+      expected = same "EV";
+    };
+    test-freeform-module-door-attrsOf-sub-emptyValue-none-refuses = {
+      expr = bothFF {
+        record = attrsSub;
+        ov = evNone;
+        mod = true;
+        door = gm.mkOptionType;
+      };
+      expected = same "<R>";
+    };
+    test-freeform-door-depth-1-listOf-sub-emptyValue-value-serves = {
+      expr = bothFF {
+        record = listSub;
+        ov = evVal;
+        d = 1;
+        door = gm.mkOptionType;
+      };
+      expected = same "EV";
+    };
+    test-freeform-module-types-door-depth-2-listOf-sub-emptyValue-value-serves = {
+      expr = bothFF {
+        record = listSub;
+        ov = evVal;
+        d = 2;
+        mod = true;
+        door = t.mkOptionType;
+      };
+      expected = same "EV";
+    };
+    # a submodule record is the plane's own position group's record (the plane-group half), below a container a node
+    test-freeform-submodule-emptyValue-value-serves = {
+      expr = bothFF {
+        record = sub;
+        ov = evVal;
+      };
+      expected = same "EV";
+    };
+    test-freeform-module-submodule-emptyValue-none-refuses = {
+      expr = bothFF {
+        record = sub;
+        ov = evNone;
+        mod = true;
+      };
+      expected = same "<R>";
+    };
+    test-freeform-depth-1-submodule-emptyValue-value-serves = {
+      expr = bothFF {
+        record = sub;
+        ov = evVal;
+        d = 1;
+      };
+      expected = same "EV";
+    };
+    # the plane where it is not the top level: a freeform submodule at a declared option (`settings`), the plane set
+    # through a nested `config._module.freeformType`, and a strict container over a lazy one
+    test-freeform-submodule-at-a-declared-option-emptyValue-value-serves = {
+      expr = bothMods {
+        mods = L: _: [
+          {
+            options.o = L.mkOption {
+              type = (tys L).lazyAttrsOf (
+                (tys L).submodule { freeformType = (tys L).lazyAttrsOf (listSub L // evVal); }
+              );
+            };
+          }
+          { config.o.k.x = L.mkIf false [ ]; }
+        ];
+        read = c: c.o.k.x;
+      };
+      expected = same "EV";
+    };
+    test-freeform-submodule-at-a-declared-option-emptyValue-none-refuses = {
+      expr = bothMods {
+        mods = L: _: [
+          {
+            options.o = L.mkOption {
+              type = (tys L).lazyAttrsOf (
+                (tys L).submodule { freeformType = (tys L).lazyAttrsOf (listSub L // evNone); }
+              );
+            };
+          }
+          { config.o.k.x = L.mkIf false [ ]; }
+        ];
+        read = c: c.o.k.x;
+      };
+      expected = same "<R>";
+    };
+    test-freeform-nested-module-config-plane-emptyValue-value-serves = {
+      expr = bothMods {
+        mods = L: _: [
+          {
+            freeformType = (tys L).lazyAttrsOf (
+              (tys L).submodule { config._module.freeformType = (tys L).lazyAttrsOf (listSub L // evVal); }
+            );
+          }
+          { config.k.x = L.mkIf false [ ]; }
+        ];
+        read = c: c.k.x;
+      };
+      expected = same "EV";
+    };
+    test-freeform-strict-over-lazy-emptyValue-value-serves = {
+      expr = bothMods {
+        mods = L: _: [
+          { freeformType = (tys L).attrsOf ((tys L).lazyAttrsOf (listSub L // evVal)); }
+          { config.k.j = L.mkIf false [ ]; }
+        ];
+        read = c: c.k.j or "<absent>";
+      };
+      expected = same "EV";
+    };
+    # controls: a declared option inside the plane's element is a root of its own and still rebuilt; several
+    # declarations keep their join; a record no `//` touched, a declared option's record, and nixpkgs' record raw
+    test-freeform-control-a-declared-option-in-the-element-is-rebuilt = {
+      expr = bothMods {
+        mods = L: _: [
+          {
+            freeformType = (tys L).lazyAttrsOf (
+              (tys L).submodule { options.o = L.mkOption { type = (tys L).lazyAttrsOf (listSub L // evVal); }; }
+            );
+          }
+          { config.k.o.x = L.mkIf false [ ]; }
+        ];
+        read = c: c.k.o.x;
+      };
+      expected = same [ ];
+    };
+    test-freeform-control-four-declarations-third-carries-joins = {
+      expr = bothFF {
+        record = listSub;
+        ov = evVal;
+        n = 4;
+        carries = i: i == 2;
+      };
+      expected = same [ ];
+    };
+    test-freeform-control-module-types-door-two-declarations-last-carries-joins = {
+      expr = bothFF {
+        record = listSub;
+        ov = evVal;
+        n = 2;
+        carries = i: i == 1;
+        mod = true;
+        door = t.mkOptionType;
+      };
+      expected = same [ ];
+    };
+    test-freeform-control-listOf-sub-unoverridden-serves-empty = {
+      expr = bothFF { record = listSub; };
+      expected = same [ ];
+    };
+    test-freeform-control-declared-option-listOf-sub-emptyValue-value-is-rebuilt = {
+      expr = both {
+        ty = L: (tys L).lazyAttrsOf (listSub L // evVal);
+        defs = L: [ { k = L.mkIf false [ ]; } ];
+        read = c: c.o.k;
+      };
+      expected = same [ ];
+    };
+    test-freeform-control-foreign-record-emptyValue-value-serves = {
+      expr = bothFF {
+        record = _: listSub nixpkgsLib;
+        ov = evVal;
+      };
+      expected = same "EV";
     };
     # `postFold`'s empty value is `g` over its element's, read the same way (nixpkgs' twin, a `merge` override,
     # leaves the empty value unreshaped, so the cell states gen's value alone)
