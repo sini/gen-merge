@@ -2721,46 +2721,66 @@ let
   # the caller's set, as nixpkgs' `internalModule` defines it, merged through a re-declared `type`
   # (the last one stated, the ordered fold) and mapped by an accepted `apply`. Only the read changes:
   # the arguments every module is applied to stay the caller's set, as in nixpkgs.
-  moduleOwnSpecialArgs =
-    own: specialArgs:
-    moduleOwnApply own.sites (if own.leaf == null then specialArgs else own.leaf.m.value);
   # `_module.specialArgs` as nixpkgs evaluates it: an ORDINARY option (nixpkgs `internalModule` declares it,
-  # untyped, and defines it as the caller's set), so a re-declaration's type is the declaration fold's merged one
-  # (`allOptions`, nixpkgs' `mergeOptionDecls`: every typed declaration's `typeMerge`), mounted at its root and
-  # folded by the evaluation's own option fold (`fold`, the realizer's `mergeOptionWith`), whose accessor reads
-  # the root as nixpkgs' `fixupOptionType` does. The leaf joins the key walk's leaves, so its accessor's group is
-  # minted. `null` where no declaration states a type: the caller's set is read as given.
-  moduleOwnSpecialArgsLeaf =
+  # untyped, and defines it as the caller's set). A re-declaration's type is the declaration fold's merged one
+  # (`allOptions`, as nixpkgs' `mergeOptionDecls` typeMerges every typed declaration), mounted at its root and folded
+  # by the evaluation's own option fold (`fold`, the realizer's `mergeOptionWith`), whose accessor reads the root as
+  # nixpkgs' `fixupOptionType` does; the leaf is one of the key walk's (`moduleOwnSpecialArgsLeaves`), so that
+  # accessor's group is minted. Where no declaration states a type the caller's set is read as given.
+  moduleOwnSpecialArgs =
     fold: sitesAt: prefix: allOptions: specialArgs:
     let
       sites = moduleOwnSites sitesAt prefix allOptions null "specialArgs";
-      typed = filter (s: s.decl ? type) sites;
+    in
+    moduleOwnApply sites (
+      if !(any (s: s.decl ? type) sites) then
+        specialArgs
+      else
+        (fold (prefix ++ moduleOwnSpecialArgsPath) (moduleOwnSpecialArgsDecl sites allOptions) (
+          moduleOwnSpecialArgsDefs specialArgs
+        )).value
+    );
+  moduleOwnSpecialArgsPath = [
+    "_module"
+    "specialArgs"
+  ];
+  moduleOwnSpecialArgsDefs = specialArgs: [
+    {
+      file = "<gen-merge>";
+      value = specialArgs;
+    }
+  ];
+  # the declaration fold's merged record where `options._module.specialArgs` is declared as a leaf, else the one
+  # merged record a `submodule`-typed `_module` leaf states (`moduleOwnSites`)
+  moduleOwnSpecialArgsDecl =
+    sites: allOptions:
+    let
       declared = allOptions._module.specialArgs or null;
-      opt = {
-        inherit (if isOptLeaf declared then declared else (prelude.last typed).decl) type;
-      };
-      path = [
-        "_module"
-        "specialArgs"
-      ];
-      defs = [
-        {
-          file = "<gen-merge>";
-          value = specialArgs;
-        }
-      ];
     in
     {
-      inherit sites;
-      leaf =
-        if typed == [ ] then
-          null
-        else
-          {
-            inherit path opt defs;
-            m = fold (prefix ++ path) opt defs;
-          };
+      inherit
+        (if isOptLeaf declared then declared else (prelude.last (filter (s: s.decl ? type) sites)).decl)
+        type
+        ;
     };
+  # The key walk's leaf for a re-declared `_module.specialArgs`: `[ ]` where no declaration states a type. It
+  # carries no fold record, so the walk runs its own passes over the one definition (`nestedGroups`' `optionGroup`).
+  moduleOwnSpecialArgsLeaves =
+    sitesAt: prefix: allOptions: specialArgs:
+    let
+      sites = moduleOwnSites sitesAt prefix allOptions null "specialArgs";
+    in
+    if !(any (s: s.decl ? type) sites) then
+      [ ]
+    else
+      [
+        {
+          path = moduleOwnSpecialArgsPath;
+          opt = moduleOwnSpecialArgsDecl sites allOptions;
+          defs = moduleOwnSpecialArgsDefs specialArgs;
+          m = { };
+        }
+      ];
   moduleDefOf =
     file: attrs:
     if !(attrs ? _module) then attrs else moduleRest file attrs (pushDownProperties attrs._module);
@@ -9555,23 +9575,6 @@ let
           # (`moduleOwn.engine`), which nothing allocates until a record or an engine argument is read.
           # A module whose WHOLE set outranks them (`overridden`) leaves `moduleArgs` alone: the
           # engine's own definitions lost nixpkgs' override pass, `name` among them.
-          specialArgsOwn =
-            if allOptions ? _module then
-              moduleOwnSpecialArgsLeaf (mergeOptionWith {
-                inherit
-                  coreShortCircuit
-                  carried
-                  strict
-                  prefix
-                  ;
-                reader = self;
-                inherit result sitesAt;
-              }) sitesAt prefix allOptions specialArgs
-            else
-              {
-                sites = [ ];
-                leaf = null;
-              };
           moduleConfig = uncheckedConfig // {
             _module =
               (
@@ -9618,7 +9621,16 @@ let
                         };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     freeformType = freeform;
-                    specialArgs = moduleOwnSpecialArgs specialArgsOwn specialArgs;
+                    specialArgs = moduleOwnSpecialArgs (mergeOptionWith {
+                      inherit
+                        coreShortCircuit
+                        carried
+                        strict
+                        prefix
+                        ;
+                      reader = self;
+                      inherit result sitesAt;
+                    }) sitesAt prefix allOptions specialArgs;
                   }
                 else if knot.positioned then
                   {
@@ -10272,7 +10284,19 @@ let
                   check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                   freeformType = freeform;
                   specialArgs =
-                    if allOptions ? _module then moduleOwnSpecialArgs specialArgsOwn specialArgs else specialArgs;
+                    if allOptions ? _module then
+                      moduleOwnSpecialArgs (mergeOptionWith {
+                        inherit
+                          coreShortCircuit
+                          carried
+                          strict
+                          prefix
+                          ;
+                        reader = self;
+                        inherit result sitesAt;
+                      }) sitesAt prefix allOptions specialArgs
+                    else
+                      specialArgs;
                 };
                 realizedCheck = (realized.typeDefs._module or { }).check or null;
                 # in nixpkgs' definition order, the module list reversed
@@ -10410,7 +10434,14 @@ let
                 selfType = typeOver result;
                 emptySelf = self.getNta "type" "empty" "[]" knotAttr;
                 inherit root;
-                leaves = realizedLeaves realized ++ optional (specialArgsOwn.leaf != null) specialArgsOwn.leaf;
+                leaves =
+                  realizedLeaves realized
+                  ++ (
+                    if allOptions ? _module then
+                      moduleOwnSpecialArgsLeaves sitesAt prefix allOptions specialArgs
+                    else
+                      [ ]
+                  );
                 normalize =
                   if coreShortCircuit then
                     map (d: if isCoreValue d.value then d // { value = d.value.values; } else d)
