@@ -5991,7 +5991,7 @@ let
               (host.result._nested.positions.${group}.${builtins.toJSON site.position} or { group.type = null; })
               .group;
         in
-        g.name or null != "freeform" && (g.type == null || interface.rebuildsRecord g.type)
+        (g.name or group) != "freeform" && (g.type == null || interface.rebuildsRecord g.type)
       else
         host.reader.getNta "nested" group (builtins.toJSON site.position) knotAttr;
   };
