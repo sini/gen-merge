@@ -2717,70 +2717,55 @@ let
       else
         stated
     );
-  # The `_module.specialArgs` a module reads where its evaluation's modules declare `options._module`:
-  # the caller's set, as nixpkgs' `internalModule` defines it, merged through a re-declared `type`
-  # (the last one stated, the ordered fold) and mapped by an accepted `apply`. Only the read changes:
-  # the arguments every module is applied to stay the caller's set, as in nixpkgs.
-  # `_module.specialArgs` as nixpkgs evaluates it: an ORDINARY option (nixpkgs `internalModule` declares it,
-  # untyped, and defines it as the caller's set). A re-declaration's type is the declaration fold's merged one
-  # (`allOptions`, as nixpkgs' `mergeOptionDecls` typeMerges every typed declaration), mounted at its root and folded
-  # by the evaluation's own option fold (`fold`, the realizer's `mergeOptionWith`), whose accessor reads the root as
-  # nixpkgs' `fixupOptionType` does; the leaf is one of the key walk's (`moduleOwnSpecialArgsLeaves`), so that
-  # accessor's group is minted. Where no declaration states a type the caller's set is read as given.
+  # The `_module.specialArgs` a module reads where its evaluation's modules declare `options._module`, read as
+  # nixpkgs reads it: an ORDINARY option (nixpkgs' `internalModule` declares it, untyped, and defines it as the
+  # caller's set). Only the read changes: the arguments every module is applied to stay the caller's set, as in
+  # nixpkgs. A re-declaration's type is the declaration fold's merged one (`allOptions`, as `mergeOptionDecls`
+  # typeMerges every typed declaration), mounted at its root and folded by the evaluation's own option fold
+  # (`read fold`, `fold` the realizer's `mergeOptionWith`), whose accessor reads the root as `fixupOptionType` does,
+  # and mapped by an accepted `apply`. The option is one of the key walk's leaves (`leaves`, carrying no fold record,
+  # so the walk runs its own passes over the one definition), so that accessor's group is minted. Where no
+  # declaration states a type the caller's set is read as given, and the walk takes no leaf. One record, built
+  # only where the modules declare `options._module`, so an evaluation that declares none allocates nothing for it.
   moduleOwnSpecialArgs =
-    fold: sitesAt: prefix: allOptions: specialArgs:
-    let
-      sites = moduleOwnSites sitesAt prefix allOptions null "specialArgs";
-    in
-    moduleOwnApply sites (
-      if !(any (s: s.decl ? type) sites) then
-        specialArgs
-      else
-        (fold (prefix ++ moduleOwnSpecialArgsPath) (moduleOwnSpecialArgsDecl sites allOptions) (
-          moduleOwnSpecialArgsDefs specialArgs
-        )).value
-    );
-  moduleOwnSpecialArgsPath = [
-    "_module"
-    "specialArgs"
-  ];
-  moduleOwnSpecialArgsDefs = specialArgs: [
-    {
-      file = "<gen-merge>";
-      value = specialArgs;
-    }
-  ];
-  # the declaration fold's merged record where `options._module.specialArgs` is declared as a leaf, else the one
-  # merged record a `submodule`-typed `_module` leaf states (`moduleOwnSites`)
-  moduleOwnSpecialArgsDecl =
-    sites: allOptions:
-    let
-      declared = allOptions._module.specialArgs or null;
-    in
-    {
-      inherit
-        (if isOptLeaf declared then declared else (prelude.last (filter (s: s.decl ? type) sites)).decl)
-        type
-        ;
-    };
-  # The key walk's leaf for a re-declared `_module.specialArgs`: `[ ]` where no declaration states a type. It
-  # carries no fold record, so the walk runs its own passes over the one definition (`nestedGroups`' `optionGroup`).
-  moduleOwnSpecialArgsLeaves =
     sitesAt: prefix: allOptions: specialArgs:
     let
       sites = moduleOwnSites sitesAt prefix allOptions null "specialArgs";
-    in
-    if !(any (s: s.decl ? type) sites) then
-      [ ]
-    else
-      [
+      typed = any (s: s.decl ? type) sites;
+      # the declaration fold's merged record where `options._module.specialArgs` is declared as a leaf, else the
+      # one merged record a `submodule`-typed `_module` leaf states (`moduleOwnSites`)
+      declared = allOptions._module.specialArgs or null;
+      opt = {
+        inherit
+          (if isOptLeaf declared then declared else (prelude.last (filter (s: s.decl ? type) sites)).decl)
+          type
+          ;
+      };
+      path = [
+        "_module"
+        "specialArgs"
+      ];
+      defs = [
         {
-          path = moduleOwnSpecialArgsPath;
-          opt = moduleOwnSpecialArgsDecl sites allOptions;
-          defs = moduleOwnSpecialArgsDefs specialArgs;
-          m = { };
+          file = "<gen-merge>";
+          value = specialArgs;
         }
       ];
+    in
+    {
+      read =
+        fold: moduleOwnApply sites (if typed then (fold (prefix ++ path) opt defs).value else specialArgs);
+      leaves =
+        if typed then
+          [
+            {
+              inherit path opt defs;
+              m = { };
+            }
+          ]
+        else
+          [ ];
+    };
   moduleDefOf =
     file: attrs:
     if !(attrs ? _module) then attrs else moduleRest file attrs (pushDownProperties attrs._module);
@@ -9621,7 +9606,7 @@ let
                         };
                     check = (declaredConfig._module or { }).check or (check == null || check) || inherited;
                     freeformType = freeform;
-                    specialArgs = moduleOwnSpecialArgs (mergeOptionWith {
+                    specialArgs = (moduleOwnSpecialArgs sitesAt prefix allOptions specialArgs).read (mergeOptionWith {
                       inherit
                         coreShortCircuit
                         carried
@@ -9630,7 +9615,7 @@ let
                         ;
                       reader = self;
                       inherit result sitesAt;
-                    }) sitesAt prefix allOptions specialArgs;
+                    });
                   }
                 else if knot.positioned then
                   {
@@ -10285,7 +10270,7 @@ let
                   freeformType = freeform;
                   specialArgs =
                     if allOptions ? _module then
-                      moduleOwnSpecialArgs (mergeOptionWith {
+                      (moduleOwnSpecialArgs sitesAt prefix allOptions specialArgs).read (mergeOptionWith {
                         inherit
                           coreShortCircuit
                           carried
@@ -10294,7 +10279,7 @@ let
                           ;
                         reader = self;
                         inherit result sitesAt;
-                      }) sitesAt prefix allOptions specialArgs
+                      })
                     else
                       specialArgs;
                 };
@@ -10438,7 +10423,7 @@ let
                   realizedLeaves realized
                   ++ (
                     if allOptions ? _module then
-                      moduleOwnSpecialArgsLeaves sitesAt prefix allOptions specialArgs
+                      (moduleOwnSpecialArgs sitesAt prefix allOptions specialArgs).leaves
                     else
                       [ ]
                   );
