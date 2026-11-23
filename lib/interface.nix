@@ -1203,8 +1203,9 @@ let
   # This read is position-free and answers as if the root rebuilt; the record written is read where the root is known,
   # the positions an evaluation's accessor (`modules.nix` `evAt`) folds (`threadedAs`' `whenEmpty`, den-hoag-vy14u), and
   # at the bridge, whose accessor states the answer (`rootRebuilds`; den-hoag-ubinn). The called fold (`mergeOption`)
-  # knows no root; gen's fix-up of a foreign `attrTag` root reaches a tag stating no set. A multi-child step (`attrTag`)
-  # states a set when any child does, so a root test reaches only single-element spines.
+  # knows no root. gen's fix-up of a foreign `attrTag` root reaches a tag stating no set, and its re-mint there keeps the
+  # record's own `emptyValue` (`writtenSlice`). A multi-child step (`attrTag`) states a set when any child does, so a root
+  # test reaches only single-element spines.
   rebuildsRecord = t: (t.getSubModules or null) != null;
   keptEmpty =
     t:
@@ -3434,13 +3435,17 @@ let
             x = rebuiltOverAt "element" e r;
           in
           # the phrase is the rebuild's own, the record nixpkgs serves here: a constructor stating its own over its
-          # container's (`nonEmptyListOf`) keeps it through the re-carry (den-hoag-wz0un)
+          # container's (`nonEmptyListOf`) keeps it through the re-carry (den-hoag-wz0un). `r` is the record nixpkgs'
+          # fold reads here (as written where no nixpkgs rebuild reached it, else that rebuild or join), so the re-mint
+          # keeps its fields that carry no check (`writtenSlice`), as `rebuild` and `sameValue.kept` keep their record's
+          # `emptyValue` (den-hoag-omf1j, den-hoag-y4w78; den-hoag-f5twc)
           if isAttrs x then
             x
             // {
               inherit (r) description;
               descriptionClass = r.descriptionClass or null;
             }
+            // builtins.intersectAttrs writtenSlice r
           else
             x;
       below =
@@ -8565,6 +8570,16 @@ let
   # answers for its base's verify only. One slice of each record, compared by the pointer of its slot as
   # `stampAgrees` compares one, so the answer is the same on every evaluator for a replaced verify.
   verifySlice = builtins.intersectAttrs { verify = null; };
+  # The fields nixpkgs' fold reads off a type that carry no check, kept from the record a re-mint replaces
+  # (`carriedAtDepth`'s `over`): `emptyValue` (`mergeDefinitions`, an option nothing defined) and
+  # `deprecationMessage` with the `name` its warning prints (`evalOptionValue`). A constructor's re-mint states its
+  # own `name`, which departs from the record's (`loaOf` is `attrsOf` under another name). Copied as slots, unforced.
+  # `getSubModules` is absent: a re-carried element's module set is the rebuild's.
+  writtenSlice = {
+    emptyValue = null;
+    deprecationMessage = null;
+    name = null;
+  };
   replacesVerify =
     t:
     t ? verify && !((t.__typeSelf or null) != null && verifySlice t == verifySlice (t.__typeSelf null));
