@@ -5718,11 +5718,13 @@ let
               (type.mergeDefs.threaded ev)
           else
             type.mergeDefs.threaded ev;
+        # the record nixpkgs keeps at this position: below a root its fix-up does not rebuild, the one written
+        # here (`ev.asWritten`, read only for a record the rebuild would reach, den-hoag-vy14u)
         whenEmpty =
-          if type ? nests && interface.rebuildsRecord type then
+          if type ? nests && interface.rebuildsRecord type && !(ev.asWritten or false) then
             { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
           else
-            whenEmptyOf type;
+            interface.keptEmptyAt (ev.asWritten or false) type;
       in
       if type ? verify then
         {
@@ -5944,9 +5946,12 @@ let
   # group's records themselves, which an `attrsOf` of nested trees at the root folds instead of
   # splitting its definitions again (`types.nix` `attrsOfWith`, den-hoag-c7jkw.1). One field answers
   # all three, so an accessor record costs nothing for the second or the third.
-  evAt = host: group: {
+  # `asWritten`: the root's fix-up rebuilds nothing below it (`interface.keptEmptyAt`), a thunk read only where a
+  # record it would rebuild is read empty
+  evAt = host: group: asWritten: {
     position = [ ];
     containerNodes = true;
+    inherit asWritten;
     child =
       site:
       if site ? __genMergeMinted then
@@ -5964,7 +5969,10 @@ let
   # no reader, so a nesting type there folds CALLED, and refuses.
   threadedIn =
     mode: group: type:
-    if mode ? reader && interface.canNest type then threadedAs (evAt mode group) type else type;
+    if mode ? reader && interface.canNest type then
+      threadedAs (evAt mode group (!(interface.rebuildsRecord type))) type
+    else
+      type;
 
   # ── THE KEY WALK (den-hoag-n6dh7 item 2; OQ9 (M′); S1 RULED (ii) for class (b), (iii) for (a)) ──
   # Which positions of an option's value are nested trees, each with the ADDRESSES of the
@@ -6433,6 +6441,10 @@ let
         };
       positionsOf =
         j: g:
+        let
+          # the option root's fix-up answer, one per group (`evAt`'s `asWritten`)
+          asWritten = !(interface.rebuildsRecord g.type);
+        in
         map
           (
             r:
@@ -6451,6 +6463,7 @@ let
                   defs
                   ;
                 group = g;
+                inherit asWritten;
                 address = map (d: {
                   attr = "definitions";
                   def = j;
@@ -7533,7 +7546,7 @@ let
               member
               defs
               ;
-            inherit (p) group;
+            inherit (p) group asWritten;
             address = map (d: {
               attr = "definitions";
               def = 0;
@@ -7556,7 +7569,7 @@ let
       accessor = evAt {
         reader = self;
         result._nested = { inherit positions; };
-      } "container";
+      } "container" p.asWritten;
     in
     {
       value = mergeDefsThreaded accessor p.loc p.member defs;
@@ -9442,10 +9455,12 @@ let
             else
               rawFold (
                 if interface.canNest freeform then
-                  threadedAs (evAt {
-                    reader = self;
-                    inherit result;
-                  } "freeform") (interface.homedAt "evalModuleTree" prefix freeform)
+                  threadedAs
+                    (evAt {
+                      reader = self;
+                      inherit result;
+                    } "freeform" (!(interface.rebuildsRecord freeform)))
+                    (interface.homedAt "evalModuleTree" prefix freeform)
                 else
                   freeform
               ) prefix (coalesceUnmatched false (length topDefs) realized.unmatched);

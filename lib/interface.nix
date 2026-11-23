@@ -1198,14 +1198,18 @@ let
   # (`substSubModules` over its `getSubModules`), so the rebuild's field is read; any other record's own.
   # A record carrying no foreign field (the engine's own bound records) states its empty value in
   # gen's word alone.
+  # The rebuild reaches a record only from a root that states a module set: a step stating none (`either`,
+  # `oneOf`, a nulled copy) states none for its root too, so every record below it is the one written there
+  # (`written`, the root's answer, which the evaluation's accessor carries: `modules.nix` `evAt`, den-hoag-vy14u).
   rebuildsRecord = t: (t.getSubModules or null) != null;
-  keptEmpty =
-    t:
+  keptEmpty = keptEmptyAt false;
+  keptEmptyAt =
+    written: t:
     if t == null then
       { }
     else if !(t ? emptyValue) then
       t.whenEmpty or { }
-    else if t ? whenEmpty && rebuildsRecord t then
+    else if t ? whenEmpty && rebuildsRecord t && !written then
       importedEmpty (t.substSubModules t.getSubModules)
     # the record's own field, read as it is: its readers ask `? value` and `.value` alone
     else if t.emptyValue ? value then
@@ -9798,6 +9802,7 @@ in
     importedElementPrefix
     importedEmpty
     keptEmpty
+    keptEmptyAt
     rebuildsRecord
     foreignValueMeta
     importedFold
