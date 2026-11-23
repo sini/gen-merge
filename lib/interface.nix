@@ -511,7 +511,7 @@ let
           ${if a ? getSubModules then "getSubModules" else null} =
             if a.getSubModules == null then m.getSubModules or null else a.getSubModules;
           # and the rebuild's empty value, never a `//` the rebuild drops (den-hoag-omf1j)
-          ${if a ? emptyValue then "emptyValue" else null} = keptEmpty true m;
+          ${if a ? emptyValue then "emptyValue" else null} = keptEmpty m;
           ${if a ? description then "description" else null} =
             if a.description == b.description or null then a.description else m.description or a.description;
           ${if a ? descriptionClass then "descriptionClass" else null} =
@@ -1198,25 +1198,21 @@ let
   # (`substSubModules` over its `getSubModules`), so the rebuild's field is read; any other record's own.
   # A record carrying no foreign field (the engine's own bound records) states its empty value in
   # gen's word alone.
-  # The rebuild reaches a record only from a root that states a module set: a single-element step stating
-  # none (`either`, `oneOf`, a nulled copy) states none for its root too, so every record below it is the
-  # one written there (`rebuilt` is the root's answer: whether the rebuild reaches the record, read off the root an
-  # accessor `modules.nix` `evAt` builds reaches, den-hoag-vy14u). `keptEmpty true` is the answer with no root, read where
-  # none is
-  # carried: the bridge's accessor and the called fold (`mergeOption`) read a record stating a set as
-  # rebuilt wherever it sits, so a nixpkgs `attrTag` over gen records folded through the bridge still
-  # reads it rebuilt (den-hoag-ubinn). A multi-child step (`attrTag`) states a set when any child does, so
-  # a root test reaches only single-element spines. One binding answers both, under main's name: each binding of this
-  # `let` is a thunk of every evaluation process, and each identifier new to the library is bytes of its load (the hub
-  # bench's `load` rows; den-hoag-vy14u spec v1).
+  # The rebuild reaches a record only from a ROOT that states a module set: a single-element step stating none
+  # (`either`, `oneOf`, a nulled copy) states none for its root too, so every record below it is the one written there.
+  # This read is position-free and answers as if the root rebuilt; the record written is read where the root is known,
+  # the positions an evaluation's accessor (`modules.nix` `evAt`) folds (`threadedAs`' `whenEmpty`, den-hoag-vy14u). The
+  # bridge's accessor and the called fold (`mergeOption`) know no root, so a nixpkgs `attrTag` over gen records folded
+  # through the bridge still reads a record stating a set as rebuilt (den-hoag-ubinn). A multi-child step (`attrTag`)
+  # states a set when any child does, so a root test reaches only single-element spines.
   rebuildsRecord = t: (t.getSubModules or null) != null;
   keptEmpty =
-    rebuilt: t:
+    t:
     if t == null then
       { }
     else if !(t ? emptyValue) then
       t.whenEmpty or { }
-    else if rebuilt && t ? whenEmpty && rebuildsRecord t then
+    else if t ? whenEmpty && rebuildsRecord t then
       importedEmpty (t.substSubModules t.getSubModules)
     # the record's own field, read as it is: its readers ask `? value` and `.value` alone
     else if t.emptyValue ? value then

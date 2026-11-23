@@ -4464,11 +4464,11 @@ let
   # position (`interface.keptEmpty`). A record stating a module set is rebuilt over it, so its rebuild's
   # field is read and a `//` the rebuild drops is dropped; any other record's own field is read, so a
   # `//` over it is honoured. Below a root that states no module set the rebuild reaches nothing and the
-  # record written is read (`keptEmpty false`): `threadedAs`' `whenEmpty` asks the root on the
+  # record written is read, its own field: `threadedAs`' `whenEmpty` asks the root on the
   # positions an `evAt` accessor folds, and this position-free read answers everywhere else (the bridge,
   # the called fold; den-hoag-vy14u, den-hoag-ubinn). `whenEmpty` alone answers only for a record that
   # states no foreign field, the engine's own bound records (den-hoag-omf1j).
-  whenEmptyOf = interface.keptEmpty true;
+  whenEmptyOf = interface.keptEmpty;
   emptyValueOr =
     type: err:
     let
@@ -5727,16 +5727,14 @@ let
         # (`evAt`'s `rootAt`), so a position read with a definition pays nothing for it (den-hoag-vy14u)
         whenEmpty =
           if !(interface.rebuildsRecord type) then
-            interface.keptEmpty true type
+            whenEmptyOf type
+          # an evaluation's accessor (`evAt`) alone knows its root; any other (the bridge's) reads position-free
+          else if (ev.containerNodes or false) && !(ev.child ev) then
+            (if type ? emptyValue then interface.importedEmpty type else type.whenEmpty or { })
+          else if type ? nests then
+            { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
           else
-            let
-              # an evaluation's accessor (`evAt`) alone knows its root; any other (the bridge's) reads position-free
-              rebuilt = !(ev.containerNodes or false) || ev.child ev;
-            in
-            if type ? nests && rebuilt then
-              { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
-            else
-              interface.keptEmpty rebuilt type;
+            whenEmptyOf type;
       in
       if type ? verify then
         {
