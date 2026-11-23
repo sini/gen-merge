@@ -14685,6 +14685,99 @@ in
             );
       };
 
+    # A CATCH BELOW THE READ SERVES, ON A STAGED CHAIN (ADR-0033: divergence is inherited, never added). `c` reads
+    # `w1`, each `w` the next, and the last reads `x`; `x` catches its own pass-0 refusal of `options ? o` and takes
+    # `abort` only while `y`'s type is still refused. nixpkgs serves `c` at every chain length m. A ladder that reads
+    # `x` only below the read serves it too; one that forces each pass's pending nodes before the next (an iterative
+    # bottom-up ladder) meets `x` while `y` is refused and aborts uncatchably at every m, and no other cell here
+    # sees it. Each cell's expected value is nixpkgs' own evaluation of the same modules. The m reach the ladder's
+    # height: past about 290 the read aborts where nixpkgs serves, the filed ceiling (den-hoag-kxqxt), not pinned
+    # here. The controls: an `x` that aborts once past pass 0, whatever `y` reads, aborts on both engines, so the
+    # serving cells are not a harness reading an abort as a value.
+    flake.testsError.staged-midchain =
+      let
+        chain =
+          engine: always: m:
+          let
+            mk = engine.mkOption;
+            bool = engine.types.bool;
+            rd = options: k: if (options.${k}.type.name or "x") == "y" then { } else { };
+            w = k: "w${toString k}";
+          in
+          [
+            (
+              { options, ... }:
+              {
+                options = {
+                  o = mk {
+                    type = bool;
+                    default = true;
+                  };
+                  y =
+                    mk {
+                      type = bool;
+                      default = true;
+                    }
+                    // rd options "o";
+                  x =
+                    mk {
+                      type = bool;
+                      default = true;
+                    }
+                    // (
+                      if !(builtins.tryEval (options ? o)).success then
+                        throw "p0"
+                      else if !always && (builtins.tryEval (options.y.type.name or "x")).success then
+                        { }
+                      else
+                        abort "mid-pass"
+                    );
+                  c =
+                    mk {
+                      type = bool;
+                      default = true;
+                    }
+                    // rd options (w 1);
+                }
+                // builtins.listToAttrs (
+                  builtins.genList (k: {
+                    name = w (k + 1);
+                    value =
+                      mk {
+                        type = bool;
+                        default = true;
+                      }
+                      // rd options (if k + 1 == m then "x" else w (k + 2));
+                  }) m
+                );
+              }
+            )
+          ];
+        gmRead =
+          always: m: (gm.evalModuleTree { specialArgs.lib = nixpkgsLib; } (chain gm always m)).config.c;
+        npRead = always: m: (nixpkgsLib.evalModules { modules = chain nixpkgsLib always m; }).config.c;
+        serves = m: {
+          expr = gmRead false m;
+          expected = npRead false m;
+        };
+        aborts = expr: {
+          inherit expr;
+          expectedError = {
+            type = "Abort";
+            msg = "mid-pass";
+          };
+        };
+      in
+      {
+        test-a-catch-below-the-read-serves-at-m-1 = serves 1;
+        test-a-catch-below-the-read-serves-at-m-50 = serves 50;
+        test-a-catch-below-the-read-serves-at-m-150 = serves 150;
+        test-a-catch-below-the-read-serves-at-m-290 = serves 290;
+        test-an-abort-past-pass-0-aborts-at-m-1-control = aborts (gmRead true 1);
+        test-an-abort-past-pass-0-aborts-at-m-150-control = aborts (gmRead true 150);
+        test-nixpkgs-aborts-the-same-chain-control = aborts (npRead true 1);
+      };
+
     # THE OUTPUT SLOT OVER `raw` REFUSES BY NAME (`tests/output-slot-over-raw.nix` holds its law): a
     # definition pair its law cannot serve is refused with gen-merge's conflict text, at the full location
     # and naming both files, on nixpkgs' engine and on gen-merge's alike. Five shapes: unequal scalars, an
