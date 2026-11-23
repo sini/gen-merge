@@ -5734,7 +5734,7 @@ let
           # an evaluation's accessor (`evAt`) alone knows its root; any other (the bridge's) reads position-free. The
           # record written is read by its own field: a record stating a module set states `emptyValue` (the boundary
           # mints it), so `importedEmpty` is that read
-          else if (ev.containerNodes or false) && !(ev.child ev) then
+          else if !(ev.child ev) then
             interface.importedEmpty type
           else if type ? nests then
             { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }

@@ -3502,47 +3502,56 @@ let
                 # The step meeting a held option reads it the same way (`lib/modules.nix`, its held-option arm).
                 over =
                   _: _: o: ds:
-                  let
-                    vs = filter (d: d ? verify) ds;
-                    c = go false (fuel - 1) (map (
-                      d: if d ? verify then builtins.removeAttrs d [ "verify" ] else d
-                    ) ds) o.type;
-                    verdict = v: builtins.foldl' (e: d: if e != null then e else d.verify v) null vs;
-                  in
-                  if vs == [ ] then
-                    c
-                  else if isV2 c then
-                    c
-                    // (if isNesting c then { } else { verify = verdict; })
-                    // {
-                      merge = {
-                        __functor =
-                          self: loc: defs:
-                          (self.v2 { inherit loc defs; }).value;
-                        v2 =
-                          args:
-                          let
-                            v = c.merge.v2 args;
-                            e = verdict v.value;
-                          in
-                          if v.headError != null || e == null then v else v // { headError.message = e; };
-                      };
-                    }
+                  # proto(ubinn gn): a held option no rebuild reached (one declaration, neither it nor the rebuild's
+                  # stating a module set) is the record written, as nixpkgs' `attrTag` rebuild keeps it
+                  if
+                    length ds == 1
+                    && (o.type.getSubModules or null) == null
+                    && ((head ds).getSubModules or null) == null
+                  then
+                    o.type
                   else
-                    c
-                    // (if isNesting c then { } else { verify = verdict; })
-                    // {
-                      merge =
-                        loc: defs:
-                        let
-                          v = c.merge loc defs;
-                          e = verdict v;
-                        in
-                        if e == null then
-                          v
-                        else
-                          throw "gen-merge: a definition for option `${showOption loc}' is not of type `${describe c}'. TypeError: ${e}";
-                    };
+                    let
+                      vs = filter (d: d ? verify) ds;
+                      c = go false (fuel - 1) (map (
+                        d: if d ? verify then builtins.removeAttrs d [ "verify" ] else d
+                      ) ds) o.type;
+                      verdict = v: builtins.foldl' (e: d: if e != null then e else d.verify v) null vs;
+                    in
+                    if vs == [ ] then
+                      c
+                    else if isV2 c then
+                      c
+                      // (if isNesting c then { } else { verify = verdict; })
+                      // {
+                        merge = {
+                          __functor =
+                            self: loc: defs:
+                            (self.v2 { inherit loc defs; }).value;
+                          v2 =
+                            args:
+                            let
+                              v = c.merge.v2 args;
+                              e = verdict v.value;
+                            in
+                            if v.headError != null || e == null then v else v // { headError.message = e; };
+                        };
+                      }
+                    else
+                      c
+                      // (if isNesting c then { } else { verify = verdict; })
+                      // {
+                        merge =
+                          loc: defs:
+                          let
+                            v = c.merge loc defs;
+                            e = verdict v;
+                          in
+                          if e == null then
+                            v
+                          else
+                            throw "gen-merge: a definition for option `${showOption loc}' is not of type `${describe c}'. TypeError: ${e}";
+                      };
               } r
             );
       # `adHocChecked`, the coherence mark read first: every owed record is asked
@@ -5924,7 +5933,10 @@ let
   bridge = {
     position = [ ];
     containerNodes = false;
-    child = site: nestedTreeAt site.nests.calledMode site;
+    # Asked with an accessor (`threadedAs`' `whenEmpty`), does the fix-up rebuild the record here? No: a foreign engine
+    # hands its export the record its own fix-up kept (nixpkgs' `fixupOptionType`, or gen's of a foreign root), so the
+    # record at the bridge is the one written (proto ubinn)
+    child = site: if site ? containerNodes then false else nestedTreeAt site.nests.calledMode site;
     # Its child for an EMPTY VALUE: the tree over none, never a merge at a position, which is the one
     # place nixpkgs evaluates a nested tree named by the placeholder (den-hoag-hnz4t).
     emptyChild = site: emptyTreeAt site.nests.calledMode site;
