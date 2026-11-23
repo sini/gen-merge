@@ -62,9 +62,155 @@ let
       };
     };
   off = L: [ (L.mkIf false [ ]) ];
+  # nixpkgs' engine over the same declarations, the records `ty gm`'s (the forward mount) against `ty nixpkgsLib`'s
+  forward =
+    {
+      ty,
+      defs ? _: [ ],
+      read ? c: c.o,
+    }:
+    let
+      ev =
+        L:
+        try (
+          read
+            (nixpkgsLib.evalModules {
+              modules = [
+                { options.o = nixpkgsLib.mkOption { type = ty L; }; }
+              ]
+              ++ map (d: { config.o = d; }) (defs nixpkgsLib);
+            }).config
+        );
+    in
+    {
+      gen = ev gm;
+      np = ev nixpkgsLib;
+    };
+  # BELOW A FOREIGN ROOT THAT REBUILDS, A TAG IT DOES NOT REACH (den-hoag-ubinn): nixpkgs' `attrTag` rebuilds only the
+  # tags stating a module set, so below a tag stating none (a union, a nulled copy) the record is the one written,
+  # and its `//` over `emptyValue` is read. Gen records there are folded by the foreign merge through the bridge.
+  ovs = {
+    evVal.emptyValue.value = "EV";
+    evNone.emptyValue = { };
+  };
+  R = L: ov: (tys L).listOf (sub L) // ov;
+  U = L: ov: (tys L).either ((tys L).lazyAttrsOf (R L ov)) (tys L).int;
+  # a submodule whose empty fold is a placeholder tree (`n` defaults to the name)
+  G =
+    L:
+    (tys L).submodule (
+      { name, ... }:
+      {
+        options.a = L.mkOption {
+          type = (tys L).int;
+          default = 0;
+        };
+        options.n = L.mkOption {
+          type = (tys L).str;
+          default = name;
+        };
+      }
+    );
+  UG = L: ov: (tys L).either ((tys L).lazyAttrsOf (G L // ov)) (tys L).int;
+  tagOf = tags: nt.attrTag (builtins.mapAttrs (_: type: nixpkgsLib.mkOption { inherit type; }) tags);
+  atBk = {
+    defs = L: [ { b.k = L.mkIf false [ ]; } ];
+    read = c: c.o.b.k;
+  };
+  atBkG = {
+    defs = L: [ { b.k = L.mkIf false { }; } ];
+    read = c: c.o.b.k;
+  };
+  expect = {
+    evVal = "EV";
+    evNone = "<R>";
+  };
+  # one cell per override, named `test-<name>-<override>`
+  perOv =
+    name: cell:
+    builtins.listToAttrs (
+      map (ov: {
+        name = "test-${name}-${ov}";
+        value = {
+          expr = cell ovs.${ov};
+          expected = same expect.${ov};
+        };
+      }) (builtins.attrNames ovs)
+    );
+  belowUnreachedTag =
+    perOv "attrTag-union-only-tag" (ov: both (atBk // { ty = L: tagOf { b = U L ov; }; }))
+    // perOv "attrTag-union-tag-beside-a-module-set" (
+      ov:
+      both (
+        atBk
+        // {
+          ty =
+            L:
+            tagOf {
+              a = sub L;
+              b = U L ov;
+            };
+        }
+      )
+    )
+    // perOv "attrTag-nulled-tag-beside-a-module-set" (
+      ov:
+      both (
+        atBk
+        // {
+          ty =
+            L:
+            tagOf {
+              a = sub L;
+              b = (tys L).lazyAttrsOf (R L ov) // {
+                getSubModules = null;
+              };
+            };
+        }
+      )
+    )
+    // perOv "lazyAttrsOf-attrTag-union-tag" (
+      ov:
+      both {
+        ty =
+          L:
+          (tys L).lazyAttrsOf (tagOf {
+            a = sub L;
+            b = U L ov;
+          });
+        defs = L: [ { p.b.k = L.mkIf false [ ]; } ];
+        read = c: c.o.p.b.k;
+      }
+    )
+    // perOv "attrTag-union-only-tag-placeholder-submodule" (
+      ov: both (atBkG // { ty = L: tagOf { b = UG L ov; }; })
+    )
+    // perOv "attrTag-union-tag-beside-a-module-set-placeholder-submodule" (
+      ov:
+      both (
+        atBkG
+        // {
+          ty =
+            L:
+            tagOf {
+              a = sub L;
+              b = UG L ov;
+            };
+        }
+      )
+    )
+    # nixpkgs' engine: nixpkgs' `either` over a gen container, the root stating no module set
+    // perOv "nixpkgs-engine-either-over-gen-lazyAttrsOf-placeholder-submodule" (
+      ov:
+      forward {
+        ty = L: nt.either ((tys L).lazyAttrsOf (G L // ov)) nt.int;
+        defs = L: [ { k = L.mkIf false { }; } ];
+        read = c: c.o.k;
+      }
+    );
 in
 {
-  flake.tests.empty-value-kept-record = {
+  flake.tests.empty-value-kept-record = belowUnreachedTag // {
     # controls: a record no `//` touched serves its constructor's empty value, and a leaf refuses
     test-control-listOf-unoverridden-serves-empty = {
       expr = both {

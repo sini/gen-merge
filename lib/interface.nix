@@ -1201,10 +1201,10 @@ let
   # The rebuild reaches a record only from a ROOT that states a module set: a single-element step stating none
   # (`either`, `oneOf`, a nulled copy) states none for its root too, so every record below it is the one written there.
   # This read is position-free and answers as if the root rebuilt; the record written is read where the root is known,
-  # the positions an evaluation's accessor (`modules.nix` `evAt`) folds (`threadedAs`' `whenEmpty`, den-hoag-vy14u). The
-  # bridge's accessor and the called fold (`mergeOption`) know no root, so a nixpkgs `attrTag` over gen records folded
-  # through the bridge still reads a record stating a set as rebuilt, and gen's fix-up of a foreign `attrTag` root reaches
-  # a tag stating no set (den-hoag-ubinn); the freeform plane takes its `freeformType` as the root, where nixpkgs keeps a
+  # the positions an evaluation's accessor (`modules.nix` `evAt`) folds (`threadedAs`' `whenEmpty`, den-hoag-vy14u), and
+  # at the bridge, whose accessor states the answer (`rootRebuilds`; den-hoag-ubinn). The called fold (`mergeOption`)
+  # knows no root; gen's fix-up of a foreign `attrTag` root reaches a tag stating no set; the freeform plane takes its
+  # `freeformType` as the root, where nixpkgs keeps a
   # single freeform definition's record as written (den-hoag-6dxwr). A multi-child step (`attrTag`) states a set when
   # any child does, so a root test reaches only single-element spines.
   rebuildsRecord = t: (t.getSubModules or null) != null;
@@ -5924,7 +5924,16 @@ let
   bridge = {
     position = [ ];
     containerNodes = false;
-    child = site: nestedTreeAt site.nests.calledMode site;
+    # Asked with an accessor (`threadedAs`' `whenEmpty`), does the fix-up rebuild the record here? The accessor's own
+    # `rootRebuilds`, which this record does NOT state: an accessor built from it (`bridge // { rootRebuilds = …; }`)
+    # states its answer, and one that states none is refused, never handed a default (den-hoag-ubinn)
+    child =
+      site:
+      if site ? containerNodes then
+        site.rootRebuilds
+          or (throw "gen-merge: an accessor built from `interface.bridge' states no `rootRebuilds': it must say whether the fix-up rebuilds the record it folds (`interface.exportBridge' is the export's, whose foreign caller hands it the record its fix-up kept)")
+      else
+        nestedTreeAt site.nests.calledMode site;
     # Its child for an EMPTY VALUE: the tree over none, never a merge at a position, which is the one
     # place nixpkgs evaluates a nested tree named by the placeholder (den-hoag-hnz4t).
     emptyChild = site: emptyTreeAt site.nests.calledMode site;
@@ -5935,7 +5944,14 @@ let
   # A fold as the foreign protocol publishes it: through the bridge where it carries the sibling,
   # and itself where it does not (a foreign fold, or a fold nothing nests under) — the export's
   # presence arm (gate C3).
-  bridged = f: if f ? threaded then f.threaded bridge else f;
+  bridged = f: if f ? threaded then f.threaded exportBridge else f;
+  # The export's accessor: a foreign caller (nixpkgs' fix-up, gen's of a foreign root, a hand call) hands the exported
+  # merge the record its own fix-up kept, so the record here is the one written. Do not derive a consumer accessor from
+  # this record: `exportBridge // { … }` inherits `rootRebuilds = false` silently (`//` copies every field, so no record
+  # can tell it was copied); derive from `bridge`, which refuses an accessor stating none
+  exportBridge = bridge // {
+    rootRebuilds = false;
+  };
 
   # THE FOREIGN-PROTOCOL TYPE MERGE, which is where the engine reaches this half. A foreign partner
   # has no gen relation and never will, so the question "do these two merge?" is asked in the
@@ -9799,6 +9815,7 @@ in
     reachesModuleSet
     mayFoldNested
     bridge
+    exportBridge
     emptyAccessor
     importedCarried
     importedOffered

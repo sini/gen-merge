@@ -4464,9 +4464,9 @@ let
   # position (`interface.keptEmpty`). A record stating a module set is rebuilt over it, so its rebuild's
   # field is read and a `//` the rebuild drops is dropped; any other record's own field is read, so a
   # `//` over it is honoured. Below a root that states no module set the rebuild reaches nothing and the
-  # record written is read, its own field: `threadedAs`' `whenEmpty` asks the root on the
-  # positions an `evAt` accessor folds, and this position-free read answers everywhere else (the bridge,
-  # the called fold; den-hoag-vy14u, den-hoag-ubinn; the freeform plane's single definition, den-hoag-6dxwr). `whenEmpty` alone answers only for a record that
+  # record written is read, its own field: `threadedAs`' `whenEmpty` asks the accessor, whose answer an `evAt`
+  # accessor reads off its root and the bridge's states (den-hoag-vy14u, den-hoag-ubinn), and this position-free read
+  # answers everywhere else (the called fold; the freeform plane's single definition, den-hoag-6dxwr). `whenEmpty` alone answers only for a record that
   # states no foreign field, the engine's own bound records (den-hoag-omf1j).
   whenEmptyOf = interface.keptEmpty;
   emptyValueOr =
@@ -5731,10 +5731,10 @@ let
           # record no rebuild reaches pays no call; every foreign field is read by `interface` (C-1)
           if !(type ? nests || type ? whenEmpty) || !(interface.rebuildsRecord type) then
             whenEmptyOf type
-          # an evaluation's accessor (`evAt`) alone knows its root; any other (the bridge's) reads position-free. The
-          # record written is read by its own field: a record stating a module set states `emptyValue` (the boundary
-          # mints it), so `importedEmpty` is that read
-          else if (ev.containerNodes or false) && !(ev.child ev) then
+          # every accessor answers, by one read: an evaluation's (`evAt`) reads its root off the key walk, the bridge's
+          # states it (`rootRebuilds`; the export's `false`). The record written is read by its own field: a record
+          # stating a module set states `emptyValue` (the boundary mints it), so `importedEmpty` is that read
+          else if !(ev.child ev) then
             interface.importedEmpty type
           else if type ? nests then
             { value = type.mergeDefs.threaded (interface.emptyAccessor ev) [ ] [ ]; }
