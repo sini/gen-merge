@@ -632,6 +632,9 @@ supplying the type need not be the only one declaring the option (a layering mod
 carries no type of its own). These are the data nixpkgs' own `warnDeprecation` reports, read off the
 same field.
 
+**Declared leaves only.** A deprecated type held below another, as a nixpkgs `attrTag` tag, is not a
+declared leaf: it is not listed, where nixpkgs' engine warns for it.
+
 **Served on a refused evaluation.** `.deprecations` is served where `config` refuses: it records what the
 engine read and from where, which is a different question from whether it checks.
 
@@ -1561,10 +1564,11 @@ position read with a definition pays nothing for it. The freeform plane has no r
 up no freeform type, so every position on it reads the record the plane holds, the one written where one
 declaration states the plane and the declarations' join where several do. A gen type folded through
 the exported `merge` (the bridge) is folded by a foreign caller, which hands it the record its own fix-up
-kept, so the record there is read as written, under a nixpkgs `attrTag` over gen records included. Three
-reads still diverge from nixpkgs. gen's fix-up of a foreign `attrTag` root reaches a tag that
-states no set; an `attrTag` states a set as soon as one tag does, so a root test covers single-element
-steps only. And the value-only fold (`mergeOption`), through which a
+kept, so the record there is read as written, under a nixpkgs `attrTag` over gen records included. Where
+gen's fix-up of a foreign root re-mints a container over a re-carried element (a tag of a nixpkgs `attrTag`
+stating no module set included), the re-mint keeps the record's own `emptyValue`, `deprecationMessage` and
+`name`, the fields nixpkgs reads off the record it keeps there. Two reads still diverge from nixpkgs. The
+value-only fold (`mergeOption`), through which a
 `_module.specialArgs` re-declared with a `type` folds the caller's set, carries no root, so below a union
 root there it reads a record stating a module set as rebuilt. And a nixpkgs `functionTo` over a record
 whose `emptyValue` a `//` overrides reads that record as rebuilt (`[]` for a list), below an `either` in
