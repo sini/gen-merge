@@ -5787,7 +5787,7 @@ let
     && ev.exactAt == ev.position
     && isAttrs t
     && !(keyedOverAt loc t)
-    && containerAt loc t;
+    && containerAtWalked ev loc t;
   # An ATTRIBUTE-KEYED container of gen's own (`lazyAttrsOf`, or an `attrsOf` whose element is not
   # itself keyed over-approximately, or a stock one re-homed as one) at an exact container's element
   # is keyed OVER-APPROXIMATELY in the enclosing group: its candidate keys are the attribute names of
@@ -5903,7 +5903,7 @@ let
               let
                 minted = containerNodeAt ev;
               in
-              if !(containerAt loc self) || minted == null then
+              if !(containerAtWalked ev loc self) || minted == null then
                 t.mergeDefs.threaded ev loc defs
               else if !(builtins.isBool minted) then
                 throw (accessorUnansweredRefusal loc self)
@@ -5939,7 +5939,7 @@ let
     "gen-merge: `evalModuleTree': option `${showOption loc}': its type `${t.name or "<container>"}' folds as a container, but the evaluation accessor its fold was handed does not state what the key walk minted here: a container's threaded fold above it rebuilt or narrowed the site its accessor's `child' receives. Extend the accessor it was handed (`ev // { position = …; }`) and pass `child' its site whole";
   threadedUnder =
     ev: loc: t:
-    if containerAt loc t then
+    if containerAtWalked ev loc t then
       let
         read = (ev.child { inherit (ev) position; }).value;
       in
@@ -5972,7 +5972,9 @@ let
     containerNodes = true;
     child =
       site:
-      if site ? __genMergeMinted then
+      if site ? __genMergeNest then
+        (host.result._nested.positions.${group}.${builtins.toJSON site.position} or { }).nest or null
+      else if site ? __genMergeMinted then
         let
           r = host.result._nested.positions.${group}.${builtins.toJSON site.position} or null;
         in
@@ -6062,6 +6064,23 @@ let
   # elements itself, and every other container's fold reads what the walk minted at its position
   # (`readsMintedNode`, at the `defineType` door). `nullOr` at the position itself adds no step and is
   # looked through by both, never promoted.
+  # `containerAt` at a fold's position, off the `canNest` walk the key walk read there (`nest`, on the record it minted
+  # at the position, den-hoag-03kig arm C): the fold reads the type the walk keyed, so a level is answered once. An
+  # accessor that states no such record answers by the type's own walk.
+  containerAtWalked =
+    ev: loc: t:
+    let
+      n =
+        if ev.containerNodes or false then
+          ev.child {
+            inherit (ev) position;
+            __genMergeMinted = true;
+            __genMergeNest = true;
+          }
+        else
+          null;
+    in
+    if isAttrs n && n ? ans then containerAtF loc t n else containerAt loc t;
   containerAt =
     loc: t:
     isAttrs t
