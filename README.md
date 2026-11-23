@@ -1501,11 +1501,21 @@ position, which is not always the record written, and gen-merge reads the same o
 module set (`getSubModules`) is rebuilt over it by its own `substSubModules`, so the rebuild's field is
 read and a `//` over the written record is dropped with it. Any other record's own `emptyValue` is
 read, so a `// { emptyValue = …; }` over it is honoured, and gen's `whenEmpty` answers only for a record
-that states no `emptyValue` at all. Where gen rebuilds a foreign container by its functor (the mount's
-per-level rebuild, the re-home over a completed element), the functor rebuilds the constructor and not a
-`//` over it, so the empty value nixpkgs' own rebuild states is carried onto the functor's rebuild, as
-its `check` is: nixpkgs' `nonEmptyListOf (submodule …)` keeps its `{ }` over `listOf`'s `[ ]`, and an
-option of it that nothing defined refuses.
+that states no `emptyValue` at all. The rebuild is the ROOT's: nixpkgs' `fixupOptionType` rebuilds only
+where the option's root states a module set, and a single-element step that states none (`either`,
+`oneOf`, a copy with `getSubModules = null`) states none for its root, so every record below such a
+root is read as written, a `//` over its `emptyValue` included. gen-merge asks the root where its
+evaluation's accessor carries one: an option root, the freeform plane and a container node each carry
+their root's type. Three reads still diverge from nixpkgs. A gen type folded through the exported
+`merge` (the bridge) carries no root, so a record stating a module set is read as rebuilt there, as
+under a nixpkgs `attrTag` over gen records. gen's fix-up of a foreign `attrTag` root reaches a tag that
+states no set; an `attrTag` states a set as soon as one tag does, so a root test covers single-element
+steps only. And the freeform plane takes its `freeformType` as the root, where nixpkgs keeps a single
+freeform definition's record as written. Where gen rebuilds a foreign container by its functor (the
+mount's per-level rebuild, the re-home over a completed element), the functor rebuilds the constructor
+and not a `//` over it, so the empty value nixpkgs' own rebuild states is carried onto the functor's
+rebuild, as its `check` is: nixpkgs' `nonEmptyListOf (submodule …)` keeps its `{ }` over `listOf`'s
+`[ ]`, and an option of it that nothing defined refuses.
 
 ### `check` — and the types whose default was wrong
 

@@ -4461,11 +4461,14 @@ let
   # is a declared null; one field cannot carry both, so the answer is a record and not a value.
   #
   # The value read is the one nixpkgs reads: the `emptyValue` of the record nixpkgs KEEPS at the
-  # position (`interface.keptEmpty`). A record stating a module set is rebuilt over it, so its rebuild's
+  # position (`interface.keptEmptyAt`). A record stating a module set is rebuilt over it, so its rebuild's
   # field is read and a `//` the rebuild drops is dropped; any other record's own field is read, so a
-  # `//` over it is honoured. `whenEmpty` alone answers only for a record that states no foreign field,
-  # the engine's own bound records (den-hoag-omf1j).
-  whenEmptyOf = interface.keptEmpty;
+  # `//` over it is honoured. Below a root that states no module set the rebuild reaches nothing and the
+  # record written is read (`keptEmptyAt true`): `threadedAs`' `whenEmpty` asks the root on the
+  # positions an `evAt` accessor folds, and this position-free read answers everywhere else (the bridge,
+  # the called fold; den-hoag-vy14u, den-hoag-ubinn). `whenEmpty` alone answers only for a record that
+  # states no foreign field, the engine's own bound records (den-hoag-omf1j).
+  whenEmptyOf = interface.keptEmptyAt false;
   emptyValueOr =
     type: err:
     let
@@ -4474,7 +4477,8 @@ let
     if empty ? value then empty.value else throw err;
   # Whether `emptyValueOr` would yield rather than throw — lets the realizer decline to short-circuit an
   # undefined option so the ONE empty-value site stays inside the fold.
-  # a record nixpkgs rebuilds is answered by the fold's own site, which reads the rebuild's empty value
+  # a record nixpkgs may rebuild (it states a module set) is answered by the fold's own site, which reads
+  # the rebuild's empty value, or the record written where its root states no module set
   hasEmptyValue = type: type != null && (interface.rebuildsRecord type || (whenEmptyOf type) ? value);
 
   # The refusal of a declared `type` that is not one (ADR-0025 item 1): nixpkgs aborts on it at the
