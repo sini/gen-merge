@@ -7377,7 +7377,15 @@ in
       test-undeclared-collision-names-the-supplied-vocabulary = {
         expr =
           (genMergeWith (
-            nixpkgsLib.types // { inherit (genTypes) rewritesCheck witnessRecord witnessedCheck; }
+            nixpkgsLib.types
+            // {
+              inherit (genTypes)
+                checkMarksAgree
+                rewritesCheck
+                witnessRecord
+                witnessedCheck
+                ;
+            }
           )).types.submodule;
         expectedError = {
           type = "ThrownError";
@@ -7390,7 +7398,12 @@ in
         expr =
           (genMergeWith {
             inherit (nixpkgsLib.types) str nullOr;
-            inherit (genTypes) rewritesCheck witnessRecord witnessedCheck;
+            inherit (genTypes)
+              checkMarksAgree
+              rewritesCheck
+              witnessRecord
+              witnessedCheck
+              ;
           }).types.nullOr;
         expectedError = {
           type = "ThrownError";
@@ -7496,7 +7509,7 @@ in
           expr = (genMergeWith nixpkgsLib.types).evalModuleTree;
           expectedError = {
             type = "ThrownError";
-            msg = withoutProtocol "`rewritesCheck', `witnessRecord', `witnessedCheck'";
+            msg = withoutProtocol "`checkMarksAgree', `rewritesCheck', `witnessRecord', `witnessedCheck'";
           };
         };
         test-a-vocabulary-missing-one-protocol-name-names-it = {

@@ -88,7 +88,10 @@ let
   # (i)), and every site here keeps the meaning it had, a functor read as an attrset. No site here
   # decides the function-ness of a definition or a default, so none takes nixpkgs' reading.
   inherit (builtins) isFunction;
-  inherit (types) rewritesCheck witnessRecord;
+  # `checkMarksAgree` (gen-types, the protocol's owner) reads the check class a constructor states: it selects the
+  # representation a rewritten nesting record crosses the import in, and never whether its check runs, which
+  # `rewritesCheck` and the inline spellings below decide (den-hoag-onuzv)
+  inherit (types) rewritesCheck witnessRecord checkMarksAgree;
 
   # THE THREAD MARKER (den-hoag-threadedforeign-substsubmodules-abort-srpix): what `threadedForeign`
   # hands a foreign `substSubModules`. nixpkgs types that argument as a module list, built as
@@ -878,7 +881,11 @@ let
         if t.check ? __verifyProjection then
           checkedFold (t // { check = t.check.__verifyProjection; }) (t.mergeDefs or leafFold)
         else
-          checkedFold t (t.mergeDefs or leafFold)
+          # the check runs either way; the fold under it is the class's own import fold (the bridged export)
+          # where the record's marks state one class, never the called form, which evaluates no nested tree
+          checkedFold t (
+            if checkMarksAgree t then t.merge or t.mergeDefs or leafFold else t.mergeDefs or leafFold
+          )
       )
     else if t._protoLeafMerge or false then
       null
@@ -928,7 +935,13 @@ let
   importedRawFold =
     t:
     if rewritesCheck t then
-      t.mergeDefs.unchecked or t.mergeDefs or leafFold
+      # unchecked either way: the raw fold of the representation the record crosses in
+      (
+        if checkMarksAgree t then
+          t.merge or t.mergeDefs or leafFold
+        else
+          t.mergeDefs.unchecked or t.mergeDefs or leafFold
+      )
     else if t._protoLeafMerge or false then
       null
     else if checksDefs t || isV2 t then
@@ -8874,7 +8887,11 @@ let
         else
           { refused = nestingImportRefusal "mkOptionType" null t; }
       )
-    else if t ? carries && t ? __typeSelf && isNesting t && rewritesCheck t then
+    # A record whose check another construction of its own stated class supplied (`checkMarksAgree`: a moved
+    # `check`, or a `//` over the functor, which keeps the mark) crosses as that class's own record does, by the
+    # import below, where its check still runs (`importedFold`, by `rewritesCheck`); the mark picks the
+    # representation, so every evaluator hands back one record (den-hoag-onuzv).
+    else if t ? carries && t ? __typeSelf && isNesting t && rewritesCheck t && !(checkMarksAgree t) then
       (
         let
           # the caller's record as itself, its check stated where nixpkgs' fold reads it (den-hoag-v4cw1)
@@ -9434,6 +9451,9 @@ let
           )
           // {
             isV2MergeCoherent = true;
+            # the check class the constructor states, read by gen-types' `checkMarksAgree`; a constructor stating
+            # none publishes none
+            ${if t ? __checkMark then "__checkMark" else null} = t.__checkMark;
           };
       # The rebuild, built once by the same `witnessRecord` and published twice, as `substSubModules`
       # and as `_substSubModulesWitness`.
@@ -9550,7 +9570,7 @@ let
       # the export completes the record, so it re-ties the stamp the import tied; a demoted copy keeps
       # its stale witness (`restamp`). Lazy for the reason `restamp` is, and a key of the one attrset
       # below rather than a `//` layer of its own (a null name adds no attribute).
-      exported = t // {
+      exported = (if t ? __checkMark then builtins.removeAttrs t [ "__checkMark" ] else t) // {
         ${if t ? __typeSelf then "__typeSelf" else null} =
           if t.__staleStamp or false || (t.__mint or null) == copyMint then t.__typeSelf else (_: exported);
         ${if t ? __typeSelf then "__stampReads" else null} = stampReads;

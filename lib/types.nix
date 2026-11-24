@@ -1189,6 +1189,8 @@ let
                 else
                   throw (refusedArgsRefusal "`withArgs'" (refusedArgsHit refusedKeys a));
               inherit admits nests;
+              # the class its check states: `admits`, the one predicate it reads, whatever the modules
+              __checkMark = "gen-merge:isModuleValue";
               # With no surviving definition the value is the module set evaluated over NO definitions, as
               # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
               # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
@@ -1447,6 +1449,8 @@ let
                 else
                   throw (refusedArgsRefusal "`withArgs'" (refusedArgsHit refusedKeys a));
               inherit admits nests;
+              # the class its check states: `admits`, the one predicate it reads, whatever the modules
+              __checkMark = "gen-merge:isModuleValue";
               # With no surviving definition the value is the module set evaluated over NO definitions, as
               # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
               # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
