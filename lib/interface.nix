@@ -8599,10 +8599,10 @@ let
   # loses the row (`enum` publishes its caller's name with no payload, `string` publishes `string`) and
   # makes the copy its own record to every carrier reader. So the door returns it as it is, and where its
   # `verify` replaced its completion's it publishes the copy's declared domain, as the engine reads one
-  # declaration alone (`meetOf`'s `dom`). For a verify-only copy that domain is a one-definition PROJECTION
-  # published as its own check witness (den-hoag-d74w0, owner arm (ii)): a foreign engine enforces it per
-  # definition, every gen reader sees the pair unrewritten and reads the copy's `verify` on the MERGED value
-  # (its `merge` carries it). A copy stating an ad-hoc `check` beside its `verify` stays a witnessed rewrite. A container copy stating `verify` (`listOf`, `struct`) is carried too, its own
+  # declaration alone (`meetOf`'s `dom`). A verify-only copy whose fold carries a role keeps its own check and
+  # witness instead, and its `merge` judges the `verify` on the SETTLED value (den-hoag-admdl, arm L): a foreign
+  # fold through v2 reads it on `headError`, a legacy reader reads the base check per definition and the `verify` at
+  # merge, and every gen reader sees the pair unrewritten and reads the copy's `verify` on the MERGED value. A copy stating an ad-hoc `check` beside its `verify` stays a witnessed rewrite. A container copy stating `verify` (`listOf`, `struct`) is carried too, its own
   # functor kept. `null` for every other record, which the door imports.
   # Only a gen-merge completion is carried: that premise is the test (`? typeMergeRel`, and
   # `? _checkWitness`, which says its `check` is this library's predicate). A raw gen-types record holds no
@@ -8636,11 +8636,7 @@ let
         dom = copyDomain x;
         # the copy's own definition check: a re-doored copy's projection carries it
         own = x.check.__verifyProjection or x.check;
-        # one definition `v`: the copy's own check, then its `verify` on the base's merge of `v` alone, so a `verify`
-        # written for members reads a member (the base's fold supplies the defaults), never a raw definition; a refusal
-        # inside that merge or the `verify`'s reads is `false`, and a foreign union takes its next alternative
         base = x.merge.__verifiedMerge or x.merge;
-        projection = rebuildClosed.verifiedMerge.projection own x.verify base;
         # a copy whose check a caller rewrote since its completion, over a module set: the fixup's rebuild carries that
         # check as the relation below carries it (den-hoag-jyisy)
         s =
@@ -8653,26 +8649,18 @@ let
         s0 =
           x
           // {
-            # a record that carries a role publishes the one-definition projection for a FOREIGN reader; where its own
-            # check is its witness the projection is its witness too, so gen's readers fold it unrewritten and judge its
-            # `verify` on the merged value; an override keeps its stale witness and is read per definition by its own
-            # check (`__verifyProjection`)
-            ${if replacesVerify x then "check" else null} =
-              if x ? carries then
-                projection
-              else
-                witnessRecord dom
-                // {
-                  isV2MergeCoherent = true;
-                };
-            ${if replacesVerify x && x ? carries && own == x._checkWitness then "_checkWitness" else null} =
-              projection;
-            # gen's placement of the `verify` for a reader that folds through the protocol: on the merged value, a base
-            # `v2` merge keeping its protocol with the `verify` on its `headError`, and stating the copy's own check
-            # there first (den-hoag-v4cw1)
+            # a record that carries no role publishes its declared domain as its check, its own witness; a record that
+            # carries one keeps its own check and witness, so every reader reads it per definition and the `verify` in
+            # the fold below
+            ${if replacesVerify x && !(x ? carries) then "check" else null} = witnessRecord dom // {
+              isV2MergeCoherent = true;
+            };
+            # the `verify` is a refinement of the SETTLED value, so it is read in the fold, on the merged value: the
+            # base's merge stated in the v2 protocol (a non-v2 base lifted, as `rebuildClosed.verify` lifts one) with
+            # the copy's own check per definition first and the `verify` on its `headError` (den-hoag-v4cw1). A reader
+            # folding through v2 never reads the projection per definition (den-hoag-admdl)
             ${if replacesVerify x && x ? carries then "merge" else null} =
-              rebuildClosed.verifiedMerge x.verify
-                (if base ? v2 then rebuildClosed.verifiedMerge.lifted own base else base);
+              rebuildClosed.verifiedMerge x.verify (rebuildClosed.verifiedMerge.lifted own base);
             # its completion's foreign relation, met with this record, as `meetOf`'s published rewrite
             # answers: a foreign engine asking this record's `typeMerge` keeps its check; a completion
             # stating none (gen-types' own records) gets none
