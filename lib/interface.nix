@@ -10074,7 +10074,9 @@ let
               else
                 (
                   let
-                    answer = t.typeMergeRel partner;
+                    # the protocol's receiver is the declaration that decides (nixpkgs' later operand), so the relation is
+                    # asked as it (`lib/modules.nix` `relationMergeAs`)
+                    answer = (t.typeMergeRel.decides or t.typeMergeRel) partner;
                   in
                   # a foreign engine hands gen a FUNCTOR: a wrapper's check on the record it holds is
                   # invisible here, so a join the twin refuses (`twinRefuses`) is refused as the twin does
@@ -10204,6 +10206,7 @@ in
     carriedCopy
     rebuildClosed
     rolesMet
+    adHocChecked
     carrierTolerated
     importReads
     ownEvaluation

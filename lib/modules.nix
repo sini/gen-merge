@@ -617,10 +617,14 @@ let
   # `typeMerge` and `binOp` (`lib/interface.nix`), which a foreign engine calls.
   # one role down, a step owing a debt owes the debt tree's node there (one operand per owed set) and the role its own
   # earlier operand carries; a thread with no debt tree is read as before (`interface.metWith.anything.functorRecord`)
-  relationMergeWithin =
-    rewrites: a: b:
+  # `decides`: `a` is the LATER declaration, the one nixpkgs' later-operand rule lets decide (`declaredPair`'s merge arm
+  # below), so a relation's foreign arm does not hand the pair to an earlier partner's ad-hoc override (`lib/types.nix`
+  # `elementRelIn`, `eitherRelIn`); every other entry asks with `false`, and a swapped pair's `a` is the earlier one
+  relationMergeWithin = relationMergeAs false;
+  relationMergeAs =
+    decides: rewrites: a: b:
     if b ? wraps && interface.wrapsKeyOf b a then
-      relationMergeWithin rewrites b a
+      relationMergeAs false rewrites b a
     else if a ? typeMergeRel then
       let
         # a gen container relation taking a step's debt meets its role pair with it, one descent (`rewrites`): a gen
@@ -634,7 +638,9 @@ let
             && isAttrs b
             && (b ? carries || a ? carries.element)
           then
-            a.typeMergeRel.rewrites rewrites b
+            a.typeMergeRel.rewrites decides rewrites b
+          else if decides && a ? typeMergeRel.decides then
+            a.typeMergeRel.decides b
           else
             a.typeMergeRel b;
       in
@@ -865,6 +871,8 @@ let
       ];
   mergeTypes = mergeTypesBy relationMerge;
   mergeTypesWithin = mergeTypesBy (relationMergeWithin null);
+  # the merge arm of a fold step: the later operand first, and it decides (`relationMergeAs`)
+  mergeTypesDeciding = mergeTypesBy (relationMergeAs true null);
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -967,7 +975,7 @@ let
               && isAttrs later
               && (later ? carries || earlier ? carries.element)
             then
-              earlier.typeMergeRel.rewrites rewrites later
+              earlier.typeMergeRel.rewrites false rewrites later
             else
               earlier.typeMergeRel later
           )
@@ -982,13 +990,13 @@ let
             let
               tried = builtins.tryEval (
                 if rewrites == null then
-                  mergeTypesWithin later earlier
+                  mergeTypesDeciding later earlier
                 else
                   # a step owing a met accumulator's debt: the relation's answer met with the step's thread, unless the
                   # relation met it already (`replaced`)
                   (
                     let
-                      x = relationMergeWithin rewrites later earlier;
+                      x = relationMergeAs true rewrites later earlier;
                     in
                     if x == null then
                       null
@@ -1002,11 +1010,11 @@ let
             if tried.success then tried.value else null
           )
         else if rewrites == null then
-          mergeTypesWithin later earlier
+          mergeTypesDeciding later earlier
         else
           (
             let
-              x = relationMergeWithin rewrites later earlier;
+              x = relationMergeAs true rewrites later earlier;
             in
             if x == null then
               null
@@ -1175,9 +1183,9 @@ let
         # a step thread's meet of one role pair (`mkMerge` the role thread): the relation's answer met with the thread once, unless
         # the relation met it (`replaced`); the one descent a gen container relation's element meet takes under a debt
         exports =
-          mkMerge: a: b:
+          decides: mkMerge: a: b:
           let
-            x = relationMergeWithin mkMerge a b;
+            x = relationMergeAs decides mkMerge a b;
           in
           if x == null then
             null
@@ -10635,6 +10643,7 @@ in
     # Their descent past the pre-flight, for a relation's own recursion (`lib/types.nix`
     # `mergeElemTypes`): an operand there is a sub-tree of one the entry already walked.
     mergeTypesWithin
+    mergeTypesDeciding
     mergeTypesReasonWithin
     # A nested tree's position record and the report mode its child evaluates in (den-hoag-n6dh7),
     # on the internal seam for the key walk that mints the children.
