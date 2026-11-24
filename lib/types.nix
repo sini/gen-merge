@@ -2666,8 +2666,8 @@ let
     name = "raw";
   };
 
-  # anything — recursive value merge (lists concat, attrsets per-key recurse, else the ENGINE'S LEAF
-  # FOLD; an attrset carrying `__mint` is carried whole by that same fold). Used by non-strict instance
+  # anything — recursive value merge (attrsets per-key recurse, else the ENGINE'S LEAF FOLD, lists
+  # included; an attrset carrying `__mint` is carried whole by that same fold). Used by non-strict instance
   # freeform + niche raw-ish spots. Its attrset arm is nixpkgs' `(attrsOf anything).merge`: each key's
   # definitions take the engine's own spine, so a property marker at a nested key is discharged there,
   # and the key set is strict (den-hoag-15wnx). It is not the full nixpkgs `types.anything`
@@ -2692,8 +2692,8 @@ let
     loc: defs:
     if defs == [ ] then
       throw "gen-merge: anything: no definitions"
-    else if all (d: isList d.value) defs then
-      concatLists (map (d: d.value) defs)
+    # No list arm: nixpkgs' `anything` has none, so lists reach `mergeEqualOption`, which `mergeLeaf`
+    # is (equal lists fold to one copy, unequal lists are refused by name).
     else if all (d: isAttrs d.value) defs then
       # ★★ A VALUE CARRYING `__mint` IS CARRIED WHOLE, NEVER REBUILT. `__mint` is the one mark a
       # substrate constructor writes (ADR-0016 ruling 5): the value is a CONSTRUCTION, and its identity
