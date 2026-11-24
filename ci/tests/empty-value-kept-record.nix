@@ -497,6 +497,26 @@ in
       };
       expected = same "EV";
     };
+    # A FUNCTION BODY NOTHING DEFINED READS THE ELEMENT RECORD AS WRITTEN (den-hoag-kc84t): below a union, nixpkgs'
+    # `functionTo` merges the body against the record a wrapper between them (`uniq`, `coercedTo`) hands it, the one
+    # written with its `//`, over a key the attrsOf level mints
+    test-below-either-functionTo-uniq-listOf-sub-emptyValue-value-serves = {
+      expr = both {
+        ty = L: nt.either (nt.attrsOf (nt.functionTo (nt.uniq (R L ovs.evVal)))) nt.int;
+        defs = L: [ { k = _: L.mkIf false [ ]; } ];
+        read = c: c.o.k null;
+      };
+      expected = same "EV";
+    };
+    test-below-either-functionTo-coercedTo-listOf-sub-emptyValue-value-serves = {
+      expr = both {
+        ty =
+          L: nt.either (nt.attrsOf (nt.functionTo (nt.coercedTo nt.str (_: [ ]) (R L ovs.evVal)))) nt.int;
+        defs = L: [ { k = _: L.mkIf false [ ]; } ];
+        read = c: c.o.k null;
+      };
+      expected = same "EV";
+    };
     # no union: a container whose module set is nulled stops the fix-up as a union does
     test-below-a-nulled-container-emptyValue-none-refuses = {
       expr = both {
