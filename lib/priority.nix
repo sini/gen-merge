@@ -423,7 +423,9 @@ let
   # The key set costs what `provenance`'s own does.
   #
   # CLASSIFIED BEFORE THE PRIORITY IS READ, because two states carry `priority = null`:
-  #   · a leaf with no declaration is freeform (the freeform plane has no priority pass) ⇒ unset;
+  #   · a leaf with no declaration is freeform, classified by its record's `priorityState`: `observed`
+  #     carries the number its own fold selected and bands as below, `noDefinition` and `unobservable`
+  #     carry `priority = null` ⇒ unset;
   #   · `defs = [ ]` is a declared leaf nobody defined, with or without an empty value ⇒ unset;
   #   · otherwise the priority is a number, and `priorityBand` decides.
   # An error raised while a leaf's definitions are collected PROPAGATES from its record. It is never

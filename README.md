@@ -400,10 +400,12 @@ pays ~one extra thunk when the channel is untouched).
 same property discharge (`dischargeProperties`, which branches on `isAttrs`) the value path runs to
 resolve priorities, so a def that is a bare `throw` fires on a plain `.defs` read. What it does NOT
 force is the **deep / merged VALUE**: the structural `.merge`, leaf `verify`, and `apply` never run for
-a provenance read (those live on the value path). A **freeform** record is stricter-free still — it
-reads only definition FILES (never the def value), because unmatched keys are attributed by `_file`
-without discharge. So: provenance forces the *shape* of who-defined-what (declared: defs to WHNF;
-freeform: files only), never the resolved value. (This is weaker than nixpkgs `definitionsWithLocations`,
+a provenance read (those live on the value path). A **freeform** record's `defs` is stricter-free still —
+it reads only definition FILES (never the def value), because unmatched keys are attributed by `_file`
+without discharge. Its `priority` and `priorityState` force that key's own defs to WHNF and evaluate their
+conditions (the declared record's discharge), and never another key's. So: provenance forces the *shape* of
+who-defined-what (declared: defs to WHNF; freeform: files, and the key's own defs where its priority is
+read), never the resolved value. (This is weaker than nixpkgs `definitionsWithLocations`,
 which forces nothing — byte-mode discharges eagerly to resolve priorities.)
 
 **Served on a refused evaluation.** `.provenance` is served where `config` refuses: it records what the
@@ -425,11 +427,54 @@ Per **declared-option** loc — a rich record:
 }
 ```
 
-Per **freeform** loc — a REDUCED record: `defs = [ { file; } … ]` (the files whose unmatched subtree
-routes through this loc; **over-inclusive** — a false-`mkIf`-wrapped freeform def still appears here,
-because the freeform pass discharges per key only inside its own `.merge`, which provenance does not
-enter), with `winners` / `priority` / `defaulted` = `null`. `null` means "freeform / not observable",
-**never** "no override present".
+Per **freeform** loc — a REDUCED record:
+
+```nix
+{
+  defs          = [ { file; } … ];  # the files whose unmatched subtree routes through this loc; OVER-INCLUSIVE:
+                                    # a false-`mkIf`-wrapped def still appears (it is not the survivors)
+  winners       = null;
+  priority      = <int> or null;    # the override priority the key's own value fold selected
+  priorityState = "observed" | "noDefinition" | "unobservable";
+  defaulted     = null;
+}
+```
+
+`priorityState` says what gen can know about the key's selection:
+
+- **`observed`**: the fold folding this loc's key selects each key's defs key-locally, and `priority` is the
+  number that selection reads. That fold is gen's own `attrsOf` / `lazyAttrsOf` as its constructor completed
+  it, at the plane's root or as the element below a key, and `anything` below a declared group. The selection
+  is replayed over the same defs the value fold reads, with its discharge (`mkIf`, nested `mkMerge`) and its
+  `filterOverrides`, so default-only priorities (1500 and above) are observed too, and `mkOrder` stays
+  separate. A live explicit `null` is observed.
+- **`noDefinition`**: that fold selected nothing, because every def discharged (`mkIf false`). `priority` is
+  `null`. It holds where the key stays in config at the element's empty value (`lazyAttrsOf`) too.
+- **`unobservable`**: any other fold, so its selection, if it has one, is its own and gen cannot see it.
+  `priority` is `null`, and it means "not observable", **never** "no definition". This covers a foreign
+  (nixpkgs) container, an opaque or custom `merge`, a bare `anything` at the plane's root, `either`,
+  `nullOr`, an element below a group that is not `anything`, a group that `anything` carries whole because
+  every def of it holds `__mint`, and door copies (below).
+
+A fold is classified by its identity, never by its name or the shape of a value: a container by its
+completion witness (`mergeDefs == mergeDefs.completed.mergeDefs`) and `anything` by its own fold. Two limits
+follow, both conservative:
+
+- **Door copies.** `genMerge.mkOptionType` and `genMerge.types.mkOptionType` over an `attrsOf` run the
+  export bridge, not the completed fold the classifier recognises, so their records read `unobservable`.
+  Their values equal the raw form's.
+- **Function identity is the evaluator's.** The witness compares functions with the evaluator's own `==`.
+  A fold record restated with the same functions in fresh cells
+  (`A // { mergeDefs = mapAttrs (_: v: v) A.mergeDefs; }`) reads `observed` on Lix, and `unobservable` on
+  Nix and Determinate. Both answers are sound: Lix's selection is the real one, and `unobservable` claims
+  nothing.
+
+A key's error stays its own: a throwing condition or def throws from that key's `priority` and
+`priorityState` (never read as absence), while its `defs` and every sibling's record still answer.
+**Serialization:** a whole-`provenance` `toJSON` or `deepSeq` reads every `priority`, so it forces each
+freeform def to WHNF and evaluates its conditions, as it always did for declared leaves. A freeform key that
+throws at WHNF and is never read as a value therefore throws there; it served before priorities were
+published.
 
 A declared loc **nobody defined** has a record too: `{ defs = [ ]; winners = [ ]; priority = null; defaulted = false; }`. That holds whether or not its type has an empty value. The refusal "used but not
 defined" belongs to the loc's VALUE and fires when `.config` reads it. This matches nixpkgs'
@@ -457,11 +502,16 @@ WHNF. It never forces the merged value. Each leaf is one of these records:
 ```nix
 { scope; loc; band; priority; winners; value; }                    # moves at `band`
 { scope; loc; reason = "unset: default-only"; priority; defaulted; } # priority 1500 or above
-{ scope; loc; reason = "unset: no definition"; }                   # a declared leaf nobody defined
-{ scope; loc; reason = "unset: freeform"; }                        # a leaf with no declaration
+{ scope; loc; reason = "unset: no definition"; }                   # nobody defined it, or every def discharged
+{ scope; loc; reason = "unset: freeform"; }                        # a freeform leaf whose fold is unobservable
 ```
 
-The classification happens before the priority is read, because two states carry `priority = null`. An
+A freeform leaf is classified by its record's `priorityState`. `observed` bands as a declared leaf does (its
+`winners` and, at 1500 and above, its `defaulted` are `null`), `noDefinition` is `unset: no definition`, and
+`unobservable` is `unset: freeform`. `unset: freeform` means UNOBSERVABLE, not empty: neither of the last two
+carries a band, and neither is a set with no inputs.
+
+The classification happens before the priority is read, because several states carry `priority = null`. An
 error raised while a leaf's defs are collected propagates from its record, and it is never read as
 "no definition". `loc` is the path within `config`.
 

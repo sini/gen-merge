@@ -162,8 +162,8 @@ in
       };
     };
 
-    # 5 — freeform loc: a REDUCED record (defs present; winners/priority/defaulted all null). null
-    # means "freeform / not observable", never "no override present".
+    # 5 — freeform loc: a REDUCED record (defs present; winners/defaulted null). `priority` is the one
+    # the key's own fold selected, `observed` here (`lazyAttrsOf str` at the plane's root).
     test-freeform-reduced-record = {
       expr =
         (prov {

@@ -9681,10 +9681,9 @@ let
           # A lazy tree mirroring `config`'s loc structure. Per DECLARED-option loc the rich record
           # `realized.prov` carries (from mergeTree); per FREEFORM loc a REDUCED record built here
           # from `realized.unmatched`. `defs` = the files of the unmatched defs at that loc
-          # (winners/priority/defaulted = null — "freeform / not observable", never "no override
-          # present"). It reuses `realized.unmatched` — one per-key def per originating module, each
+          # (winners/defaulted = null; `priority` with its `priorityState`, below). It reuses `realized.unmatched` — one per-key def per originating module, each
           # carrying its `file`, the SAME structures the value-side freeform coalescing consumes; it
-          # does NOT re-walk modules and does NOT force config VALUES (reads only `file`/`path`). It
+          # does NOT re-walk modules, and `defs` forces no config VALUE (it reads only `file`/`path`). It
           # may be OVER-INCLUSIVE: a false-`mkIf`-wrapped freeform def still shows here (the freeform
           # pass, like nixpkgs, discharges per key only inside its own `.merge`, which provenance does
           # not enter). Records are grouped by their (joined) loc with one `builtins.groupBy`, which
@@ -9717,7 +9716,8 @@ let
                   && f.mergeDefs == (f.mergeDefs.completed.mergeDefs or null);
                 isAnything = f: isAttrs f && f ? mergeDefs && f.mergeDefs == strategies.anything.mergeDefs;
                 # The fold of a group's subtrees, `null` where nothing below it selects. `anything` carries them whole
-                # (`mergeLeaf`) when every one holds `__mint`, read off the records below the group alone.
+                # (`mergeLeaf`) when every one holds `__mint` at its top, as a record at or below `__mint` puts it there,
+                # read off the records below the group alone.
                 childOf =
                   f: deeper:
                   if f == null then
@@ -9736,7 +9736,8 @@ let
                 mintArm =
                   deeper:
                   let
-                    marked = concatMap (r: if r.rest == [ "__mint" ] then r.us else [ ]) deeper;
+                    # formals bind `rest` without a thunk for `head`'s argument
+                    marked = concatMap ({ rest, us, ... }: if head rest == "__mint" then us else [ ]) deeper;
                     has = listToAttrs (
                       map (u: {
                         name = toString u.modIndex;
@@ -9750,30 +9751,25 @@ let
                 recordOf =
                   selects: us:
                   let
-                    s =
+                    priority =
                       if !selects then
-                        {
-                          priority = null;
-                          priorityState = "unobservable";
-                        }
+                        null
                       else if all (u: !(u.value ? _type)) us then
-                        {
-                          priority = defaultPriority;
-                          priorityState = "observed";
-                        }
+                        defaultPriority
                       else
-                        let
-                          p = (filterOverridesRich (concatMap (u: dischargeIn u.file u.value) us)).highestPrio;
-                        in
-                        {
-                          priority = p;
-                          priorityState = if p == null then "noDefinition" else "observed";
-                        };
+                        (filterOverridesRich (concatMap (u: dischargeIn u.file u.value) us)).highestPrio;
                   in
                   {
                     defs = map (u: { inherit (u) file; }) us;
                     winners = null;
-                    inherit (s) priority priorityState;
+                    inherit priority;
+                    priorityState =
+                      if !selects then
+                        "unobservable"
+                      else if priority == null then
+                        "noDefinition"
+                      else
+                        "observed";
                     defaulted = null;
                   };
                 byPath = builtins.groupBy (u: showOption u.path) realized.unmatched;

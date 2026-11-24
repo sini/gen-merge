@@ -89,7 +89,13 @@ let
         default = "d";
       };
     }
-    { free = "f"; }
+    {
+      free = "f";
+      # below the declared group `g`, `attrsOf str`'s element `str` selects nothing: unobservable
+      g.free = "gf";
+      # discharged before any override is read: no surviving definition
+      gone = gm.mkIf false "z";
+    }
   ];
   c1Bands = gm.bandedLeaves "c" c1;
   files = rec': map (w: w.file) rec'.winners;
@@ -231,7 +237,8 @@ in
           priority = 1500;
           defaulted = true;
         };
-        # an observed freeform leaf moves at its band (den-hoag-0g61j); the unobservable reason is the build's cell
+        # A freeform leaf is classified by its record's `priorityState`: observed moves at its band, a key with
+        # no surviving definition moves nothing, and an unobservable fold is `unset: freeform`, never empty.
         free = {
           scope = "c";
           loc = [ "free" ];
@@ -239,6 +246,19 @@ in
           priority = 100;
           winners = null;
           value = "f";
+        };
+        g.free = {
+          scope = "c";
+          loc = [
+            "g"
+            "free"
+          ];
+          reason = "unset: freeform";
+        };
+        gone = {
+          scope = "c";
+          loc = [ "gone" ];
+          reason = "unset: no definition";
         };
       };
     };
