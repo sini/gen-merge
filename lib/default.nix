@@ -132,6 +132,7 @@ let
   # default for a missing protocol would publish unwitnessed exports, whose rewritten `check` is
   # then dropped without a word. Which other names the library carries is not judged here.
   protocolNames = [
+    "checkMarksAgree"
     "rewritesCheck"
     "witnessRecord"
     "witnessedCheck"
@@ -288,6 +289,24 @@ let
       spelledRead
     else if spelledRead != null then
       "declares a `types' whose check-witness protocol reads the pair this library spells from `witnessRecord' otherwise than the pair `witnessedCheck' builds: ${builtins.concatStringsSep "; " spelledRead}. Every exported type publishes the spelled pair, so its witness would be misread"
+    # `exportType` spells the check class too: a constructor's `__checkMark` inside the record it
+    # publishes under both fields. The reader must take two equal statements as one class and two different ones as
+    # two, or a rewritten nesting record crosses the import in the representation of a class it does not state.
+    else if
+      let
+        marked = m: exported // { __checkMark = m; };
+        same = t.checkMarksAgree {
+          check = marked "c";
+          _checkWitness = marked "c";
+        };
+        other = t.checkMarksAgree {
+          check = marked "d";
+          _checkWitness = marked "c";
+        };
+      in
+      !(builtins.isBool same && builtins.isBool other && same && !other)
+    then
+      "declares a `types' whose `checkMarksAgree' does not read the check class this library spells on a marked export (`__checkMark' in the check record) as one class where the two statements are equal and two where they differ"
     else
       null;
 

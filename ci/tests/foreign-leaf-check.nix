@@ -196,7 +196,12 @@ let
   # link refuses a shadow over a live value by name (den-hoag-y9vzt). `compat.types.listOf` is
   # gen-merge's own, over a nixpkgs leaf.
   compat = genMergeWith {
-    inherit (genTypes) rewritesCheck witnessRecord witnessedCheck;
+    inherit (genTypes)
+      checkMarksAgree
+      rewritesCheck
+      witnessRecord
+      witnessedCheck
+      ;
     inherit (t)
       str
       int
