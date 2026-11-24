@@ -9699,92 +9699,101 @@ let
               { }
             else
               let
-                # Does the freeform fold `rawFold t` select a captured key's definitions by override priority, key-locally,
-                # `n` group steps below the plane's root? Only where the fold that runs is gen's own attribute container
-                # (`attrsOf`, `lazyAttrsOf`) as its constructor completed it (`mergeDefs.completed`, the house witness
-                # `threaded` reads), whose every key folds by `mergeDefs` (discharge, then `filterOverrides`). Below a declared
-                # group the group's value is an attrset the engine built (`buildModuleUnmatched`), folded by the element: an
-                # attribute container again, or `anything`, whose key arm is the same passes. Any other fold answers `false`:
-                # its override selection, if it has one, is its own. Reads types only, never a definition.
-                freeformKeyed =
-                  t:
-                  isAttrs t
-                  && t ? mergeDefs
-                  && isAttrs t.mergeDefs
-                  && !(t.mergeDefs ? unchecked)
-                  && !(t ? choose || t ? __threadedForeign)
-                  && t ? carries.element
-                  && (t.mergeDefs.container or null == "attrsOf" || t.mergeDefs.container or null == "lazyAttrsOf")
-                  && t.mergeDefs == (t.mergeDefs.completed.mergeDefs or null);
-                # `t` folds the definitions holding the key `head rest` at group `q`; `rest` ends at the captured key
-                freeformSelectsAt =
-                  t: q: rest:
-                  freeformKeyed t
-                  && (tail rest == [ ] || freeformGroupSelects t.carries.element (q ++ [ (head rest) ]) (tail rest));
-                # `anything` folds a group's subtrees by key unless every one carries `__mint`, where it carries
-                # them whole (`mergeLeaf`) and selects nothing: that arm is read off the captured paths alone
-                freeformGroupSelects =
-                  e: q: rest:
-                  if isAttrs e && e ? mergeDefs && e.mergeDefs == strategies.anything.mergeDefs then
-                    !(mintArmAt q) && (tail rest == [ ] || freeformGroupSelects e (q ++ [ (head rest) ]) (tail rest))
+                # Does `f`, folding the definitions whose keys are one level's names, select each key's definitions by
+                # override priority, key-locally? Only gen's own attribute container (`attrsOf`, `lazyAttrsOf`) as its
+                # constructor completed it (`mergeDefs.completed`, the witness `threaded` reads), whose every key folds by
+                # `mergeDefs` (discharge, then `filterOverrides`), and, below a declared group, `anything`, whose key arm is
+                # the same passes over the subtrees the engine built (`buildModuleUnmatched`). Any other fold is
+                # unobservable: its override selection, if it has one, is its own. Types are read, never a definition.
+                keyed =
+                  f:
+                  isAttrs f
+                  && f ? mergeDefs
+                  && isAttrs f.mergeDefs
+                  && !(f.mergeDefs ? unchecked)
+                  && !(f ? choose || f ? __threadedForeign)
+                  && f ? carries.element
+                  && (f.mergeDefs.container or null == "attrsOf" || f.mergeDefs.container or null == "lazyAttrsOf")
+                  && f.mergeDefs == (f.mergeDefs.completed.mergeDefs or null);
+                isAnything = f: isAttrs f && f ? mergeDefs && f.mergeDefs == strategies.anything.mergeDefs;
+                # The fold of a group's subtrees, `null` where nothing below it selects. `anything` carries them whole
+                # (`mergeLeaf`) when every one holds `__mint`, read off the records below the group alone.
+                childOf =
+                  f: deeper:
+                  if f == null then
+                    null
+                  else if keyed f then
+                    (
+                      let
+                        c = f.carries.element;
+                      in
+                      if isAnything c && mintArm deeper then null else c
+                    )
+                  else if isAnything f then
+                    (if mintArm deeper then null else f)
                   else
-                    freeformSelectsAt e q rest;
-                mintArmAt =
-                  q:
+                    null;
+                mintArm =
+                  deeper:
                   let
-                    marked = byPath.${showOption (q ++ [ "__mint" ])} or [ ];
+                    marked = concatMap (r: if r.rest == [ "__mint" ] then r.us else [ ]) deeper;
                     has = listToAttrs (
                       map (u: {
                         name = toString u.modIndex;
                         value = null;
                       }) marked
                     );
-                    n = length q;
                   in
-                  marked != [ ]
-                  && all (
-                    u: !(length u.path > n && take n u.path == q) || has ? ${toString u.modIndex}
-                  ) realized.unmatched;
-                # the type the value fold runs (`freeformConfigCold`), restated here so no evaluation pays a binding for it
-                folding =
-                  if interface.canNest freeform then interface.homedAt "evalModuleTree" prefix freeform else freeform;
-                # a key's override selection, replayed over the very definitions the value fold reads at that key
-                selected =
-                  us:
-                  if !(freeformSelectsAt folding [ ] (head us).path) then
-                    {
-                      priority = null;
-                      priorityState = "unobservable";
-                    }
-                  else if all (u: !(u.value ? _type)) us then
-                    {
-                      priority = defaultPriority;
-                      priorityState = "observed";
-                    }
-                  else
-                    let
-                      p = (filterOverridesRich (concatMap (u: dischargeIn u.file u.value) us)).highestPrio;
-                    in
-                    {
-                      priority = p;
-                      priorityState = if p == null then "noDefinition" else "observed";
-                    };
+                  marked != [ ] && all (r: all (u: has ? ${toString u.modIndex}) r.us) deeper;
+                # one captured key's record: its override selection replayed over the very definitions the value fold
+                # reads there, demanded only when `priority` or `priorityState` is read
+                recordOf =
+                  selects: us:
+                  let
+                    s =
+                      if !selects then
+                        {
+                          priority = null;
+                          priorityState = "unobservable";
+                        }
+                      else if all (u: !(u.value ? _type)) us then
+                        {
+                          priority = defaultPriority;
+                          priorityState = "observed";
+                        }
+                      else
+                        let
+                          p = (filterOverridesRich (concatMap (u: dischargeIn u.file u.value) us)).highestPrio;
+                        in
+                        {
+                          priority = p;
+                          priorityState = if p == null then "noDefinition" else "observed";
+                        };
+                  in
+                  {
+                    defs = map (u: { inherit (u) file; }) us;
+                    winners = null;
+                    inherit (s) priority priorityState;
+                    defaulted = null;
+                  };
                 byPath = builtins.groupBy (u: showOption u.path) realized.unmatched;
+                # `f` folds this level (`null`: nothing here selects)
                 nest =
-                  rs:
+                  f: rs:
                   builtins.zipAttrsWith
                     (
                       _: sub:
                       let
                         here = filter (r: r.rest == [ ]) sub;
                         deeper = filter (r: r.rest != [ ]) sub;
+                        own = recordOf (f != null && (keyed f || isAnything f)) (head here).us;
                       in
                       if deeper == [ ] then
-                        (head here).record
+                        own
                       else if here == [ ] then
-                        nest deeper
+                        nest (childOf f deeper) deeper
                       else
-                        recursiveUpdate (head here).record (nest deeper)
+                        recursiveUpdate own (nest (childOf f deeper) deeper)
                     )
                     (
                       map (r: {
@@ -9793,20 +9802,15 @@ let
                         };
                       }) rs
                     );
+                # the type the value fold runs (`freeformConfigCold`), restated here so no evaluation pays a binding for it
+                folding =
+                  if interface.canNest freeform then interface.homedAt "evalModuleTree" prefix freeform else freeform;
               in
-              nest (
+              # the plane's root selects only as an attribute container: a bare `anything` there is not one
+              nest (if keyed folding then folding else null) (
                 map (us: {
                   rest = (head us).path;
-                  record =
-                    let
-                      s = selected us;
-                    in
-                    {
-                      defs = map (u: { inherit (u) file; }) us;
-                      winners = null;
-                      inherit (s) priority priorityState;
-                      defaulted = null;
-                    };
+                  inherit us;
                 }) (builtins.attrValues byPath)
               );
           # Warm: the freeform provenance layer rides the same reuse decision as its config layer.
