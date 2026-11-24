@@ -714,7 +714,7 @@ let
               }
             ];
       in
-      builtins.seq r.config.x (builtins.length r.provenance.x.winners);
+      builtins.seq r.config.x (builtins.seq (builtins.length r.provenance.x.winners) r.config.x);
     nested-route-provenance-then-config =
       let
         r =
@@ -738,7 +738,7 @@ let
           }
         ]
       ).config.x
-      + spiedAt sub [ { x = 2; } ];
+      + (spiedAt sub [ { x = 2; } ]).x;
     # The spy's live control: two root evaluations read 2.
     one-eval-control-two-roots = (spiedAt sub [ { x = 1; } ]).x + (spiedAt sub [ { x = 2; } ]).x;
     # den-hoag-8qenh (c′): an evaluation's own type's empty value is that evaluation's on-demand
