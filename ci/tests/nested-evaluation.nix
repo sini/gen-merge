@@ -538,5 +538,116 @@ in
         "refused"
       ];
     };
+    # G4b (spec v1): EVERY GUARD ANSWERS ALIKE on Nix, Determinate and Lix. A record holding its completion's own
+    # value in a NEW slot (a `//` restatement, a `mapAttrs` copy) is told from its completion only by `==`, which
+    # on Lix compares the function a slot holds and on Nix and Determinate the slot. Red at gen-merge a21b489: Lix
+    # serves each restated record (`user`), Nix and Determinate refuse it.
+    test-g4b-merge-restated-in-a-new-slot-refused = {
+      expr = map (x: who (route x loc reg).config) [
+        (userType // { merge = userType.merge; })
+        (
+          let
+            m = userType.merge;
+          in
+          userType // { merge = m; }
+        )
+        (builtins.mapAttrs (_: v: v) userType)
+      ];
+      expected = [
+        "refused"
+        "refused"
+        "refused"
+      ];
+    };
+    test-g4b-fold-and-tree-restated-refused = {
+      expr = map (x: who (route x loc reg).config) [
+        (userType // { mergeDefs = builtins.mapAttrs (_: v: v) userType.mergeDefs; })
+        (userType // { nests = builtins.mapAttrs (_: v: v) userType.nests; })
+      ];
+      expected = [
+        "refused"
+        "refused"
+      ];
+    };
+    # the restated records' exported `merge` serves the user's child on every evaluator: the refusal is the route's
+    test-g4b-restated-records-merge-serves-the-user = {
+      expr = map (x: who (x.merge loc reg)) [
+        (userType // { merge = userType.merge; })
+        (builtins.mapAttrs (_: v: v) userType)
+        (userType // { mergeDefs = builtins.mapAttrs (_: v: v) userType.mergeDefs; })
+        (userType // { nests = builtins.mapAttrs (_: v: v) userType.nests; })
+      ];
+      expected = [
+        "user"
+        "user"
+        "user"
+        "user"
+      ];
+    };
+    # A `check` carried from a sibling is the very function its completion's is (every submodule's is one), so it
+    # is applied, not compared, and the record is served the child its `merge` serves. Red at a21b489: Nix and
+    # Determinate refuse it (`rewritesCheck` compares the check by `==`), Lix serves it.
+    test-g4b-check-carried-from-a-sibling-is-applied = {
+      expr =
+        let
+          x = userType // builtins.intersectAttrs { check = null; } siblingType;
+        in
+        [
+          (who (route x loc reg).config)
+          (who (x.merge loc reg))
+        ];
+      expected = [
+        "user"
+        "user"
+      ];
+    };
+    # A `check` carried from a completion over ANOTHER domain sits where every completion binds one, and refuses
+    # what that domain refuses: applied, it serves a definition inside that domain and refuses one outside it, by
+    # name, where gen's engine refuses it too. Red at a21b489: the first read is refused on every evaluator.
+    test-g4b-check-carried-from-another-domain-is-applied = {
+      expr =
+        let
+          d = t.defineType (siblingType // { admits = v: builtins.isAttrs v && (v.shell or "") != "fish"; });
+          x = userType // builtins.intersectAttrs { check = null; } d;
+          fish = [
+            {
+              file = "f.nix";
+              value.shell = "fish";
+            }
+          ];
+        in
+        [
+          (who (route x loc reg).config)
+          (who (route x loc fish).config)
+          (who
+            (gm.evalModuleTree { } [
+              { options.u = mkOption { type = x; }; }
+              { u.shell = "fish"; }
+            ]).config.u
+          )
+        ];
+      expected = [
+        "user"
+        "refused"
+        "refused"
+      ];
+    };
+    # A door's rebuild of a record (`mkOptionType` over an admits copy, and over nixpkgs' `addCheck` twin) binds
+    # `merge` and `check` where the door binds them: refused by position on every evaluator. Under the route at
+    # a21b489 with its check conjunct deleted, Lix serves both and Nix and Determinate refuse them.
+    test-g4b-door-rebuilds-refused = {
+      expr =
+        let
+          n = v: builtins.isAttrs v && (v.shell or "") != "fish";
+        in
+        map (x: who (route x loc reg).config) [
+          (gm.mkOptionType (userType // { admits = n; }))
+          (gm.mkOptionType (nl.types.addCheck userType n))
+        ];
+      expected = [
+        "refused"
+        "refused"
+      ];
+    };
   };
 }

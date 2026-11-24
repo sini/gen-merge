@@ -5959,15 +5959,24 @@ let
   # `exportBridge`'s (`rootRebuilds = false` is the export's own statement, not one inherited by accident).
   # Refused by name where the type's `merge` is not that fold: a record that is not nesting (a leaf, a container,
   # gen-schema's `refined` copy, which keeps `nests` and loses the sibling), a fold or a tree that is not the one
-  # its completion states, and a `merge` or `check` rewritten over the export. The `merge` witness compares the
-  # slot by pointer, as 2632d's guards compare `admits`: every instance type's `merge` sits at one source
-  # position, so a position witness passes a `merge` carried from another record. A record forging its own
-  # completion (`completed` pointing at itself) passes every witness, and is served its own fold's child, which
-  # is what its exported `merge` serves.
+  # its completion states, and a `merge` or `check` rewritten over the export. EVERY GUARD ANSWERS ALIKE ON EVERY
+  # EVALUATOR (den-hoag-t5ndo spec v1): `==` on a function, or on a record holding one, reads a slot restated in a
+  # new cell as unequal on Nix and Determinate and, holding the same function, as equal on Lix. So no field the
+  # guards compare by `==` is reached before its source position, read as data as `seen` reads one
+  # (den-hoag-obi4j): a field bound anywhere but where its completion bound it (a `//` restatement, a `mapAttrs`
+  # copy, a door's rebuild) is refused first. Past the positions, `merge` is compared by its slot's pointer, as
+  # 2632d's guards compare `admits`: every instance type's `merge` sits at one source position, so the position
+  # passes a `merge` carried with its attribute from another record, and the slot does not; a carried `merge`
+  # closes over its own record, so it is a different function on every evaluator. A carried `check` can be the
+  # very function its completion's is (every submodule's is one), which only Lix's `==` sees, so `check` is not
+  # compared: it is APPLIED, as the value path applies it before the merge, to each definition the fold admits.
+  # A record forging its own completion (`completed` pointing at itself) passes every witness, and is served its
+  # own fold's child, which is what its exported `merge` serves.
   nestedEvaluation =
     t: loc: defs:
     let
       c = t.mergeDefs.completed or null;
+      at = builtins.${"unsafeGetAttrPos"};
       refuse =
         why:
         throw "gen-merge: evalNested: the option type `${nameOf t}' at `${showOption loc}' ${why}, so there is no nested evaluation its `merge' makes to return";
@@ -5976,11 +5985,19 @@ let
       refuse "is not a gen nesting type (it states no nested tree with its threaded fold)"
     # the completion is read off the fold, so a fold carried by `//` from another record brings that record's
     # completion with it: the tree the completion states must be the one this record states
-    else if !(isAttrs c) || t.mergeDefs != c.mergeDefs || t.nests != c.nests then
+    else if
+      !(isAttrs c)
+      || at "mergeDefs" t != at "mergeDefs" c
+      || at "nests" t != at "nests" c
+      || t.mergeDefs != c.mergeDefs
+      || t.nests != c.nests
+    then
       refuse "folds by a fold that is not the one its record was completed with"
     else if
-      builtins.intersectAttrs { merge = null; } t != builtins.intersectAttrs { merge = null; } c
-      || rewritesCheck t
+      at "merge" t != at "merge" c
+      || at "check" t != at "check" c
+      || builtins.intersectAttrs { merge = null; } t != builtins.intersectAttrs { merge = null; } c
+      || !(all (d: !(c.admits d.value) || t.check d.value) defs)
     then
       refuse "has a `merge' or `check' rewritten over its export"
     # a definition outside the domain is refused by the fold itself (`refusingOutside`), in the value path's words
