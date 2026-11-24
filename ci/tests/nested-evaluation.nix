@@ -5,11 +5,13 @@
 # (G3) is the spy's, `ci/tests-process.nix` block `engine-option-names`.
 #
 # The forged records (G4) are `//` copies of an instance-shaped type and a sibling with one more option (`o9`), so
-# `o9` in a served value says whose child was evaluated. F2, F3, F5 and F6 are served the wrong child at the first
-# prototype (gen-merge 4a59420, a position witness on `merge` and the child built from the completion): F2, F3 and F5
-# are refused now, by the `merge` slot compared by pointer, and F6 forges its own completion and is served the
-# child its own fold makes, which is what its exported `merge` serves. F7's refusal is the fold-identity conjunct's
-# alone. Red at gen-merge main 38dff3c: `evalNested` is absent.
+# `o9` in a served value says whose child was evaluated. The route reads its child off the record's `merge` (a nesting
+# export's `merge` carries the evaluation it makes), so every forged record is served the child its `merge` serves,
+# by construction and with no field compared: the contract each G4 cell pins is route = merge. F2, F3, F5 and F6 were
+# served the wrong child at the first prototype (gen-merge 4a59420); every guard that refused a forgery by comparing
+# fields (the completion, the `merge` slot, `rewritesCheck`) split by evaluator on a re-celled field
+# (den-hoag-t5ndo spec v1), and a position witness is ruled out (den-hoag-oeygp criterion (4)). Red at gen-merge main
+# 38dff3c: `evalNested` is absent.
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
@@ -328,8 +330,8 @@ in
         ];
       };
     };
-    # G4: the forged records. `route` is whose child the route served, `merge` whose the exported `merge` serves;
-    # where both serve they serve the same child
+    # G4: the forged records. `route` is whose child the route served, `merge` whose the exported `merge` serves:
+    # equal on every record whose `merge` is a nesting export's
     test-g4-F0-intact-record-is-served = {
       expr = row forged.F0;
       expected = {
@@ -337,38 +339,38 @@ in
         merge = "user";
       };
     };
-    test-g4-F1-fold-carried-from-sibling-refused = {
+    test-g4-F1-fold-carried-from-sibling-served-its-merges-child = {
       expr = row forged.F1;
       expected = {
-        route = "refused";
+        route = "user";
         merge = "user";
       };
     };
-    test-g4-F2-fold-and-tree-carried-from-sibling-refused = {
+    test-g4-F2-fold-and-tree-carried-from-sibling-served-its-merges-child = {
       expr = row forged.F2;
       expected = {
-        route = "refused";
+        route = "user";
         merge = "user";
       };
     };
-    test-g4-F3-sibling-with-merge-removed-refused = {
+    test-g4-F3-sibling-with-merge-removed-served-its-merges-child = {
       expr = row forged.F3;
       expected = {
-        route = "refused";
+        route = "sibling";
         merge = "sibling";
       };
     };
-    test-g4-F4-merge-new-literal-refused = {
+    test-g4-F4-merge-new-literal-served-its-merges-child = {
       expr = row forged.F4;
       expected = {
-        route = "refused";
+        route = "sibling";
         merge = "sibling";
       };
     };
-    test-g4-F5-merge-slot-carried-from-sibling-refused = {
+    test-g4-F5-merge-slot-carried-from-sibling-served-its-merges-child = {
       expr = row forged.F5;
       expected = {
-        route = "refused";
+        route = "sibling";
         merge = "sibling";
       };
     };
@@ -379,10 +381,10 @@ in
         merge = "sibling";
       };
     };
-    test-g4-F7-threaded-rewritten-inside-fold-refused = {
+    test-g4-F7-threaded-rewritten-inside-fold-served-its-merges-child = {
       expr = row forged.F7;
       expected = {
-        route = "refused";
+        route = "user";
         merge = "user";
       };
     };
@@ -398,13 +400,15 @@ in
         (userType // { merge = _: _: { shell = "over"; }; })
         (userType // { check = _: true; })
         (userType // { inherit (plainSub) mergeDefs; })
+        (userType // { check = _: false; })
       ];
       expected = [
         false
         false
         false
         false
-        false
+        true
+        true
         false
       ];
     };
@@ -536,6 +540,189 @@ in
       expected = [
         "refused"
         "refused"
+      ];
+    };
+    # G4c (spec v2): EVERY OUTCOME IS THE SAME ON Nix, Determinate AND Lix, because no field is compared. A record
+    # holding its own `merge`, fold or tree in a new cell (a `//` restatement, a variable, `inherit`, a `mapAttrs`
+    # copy) is served the user's child, as its `merge` serves it. Red at gen-merge a21b489: Lix serves each, Nix and
+    # Determinate refuse it (the `merge` slot and the completion compared by `==`).
+    test-g4c-restated-fields-served-as-the-merge-serves = {
+      expr = map (x: row x) [
+        (userType // { merge = userType.merge; })
+        (
+          let
+            m = userType.merge;
+          in
+          userType // { merge = m; }
+        )
+        (userType // { inherit (userType) merge; })
+        (builtins.mapAttrs (_: v: v) userType)
+        (userType // { mergeDefs = builtins.mapAttrs (_: v: v) userType.mergeDefs; })
+      ];
+      expected = builtins.genList (_: {
+        route = "user";
+        merge = "user";
+      }) 5;
+    };
+    # A `check` carried from a sibling is applied, and accepts what the user's own accepts. Red at a21b489 on Nix and
+    # Determinate (`rewritesCheck` compares it by `==`): refused there, served on Lix.
+    test-g4c-check-carried-from-a-sibling-is-applied = {
+      expr = row (userType // builtins.intersectAttrs { check = null; } siblingType);
+      expected = {
+        route = "user";
+        merge = "user";
+      };
+    };
+    # A `check` carried from a completion over ANOTHER domain is applied: it serves a definition inside that domain
+    # and refuses one outside it, by name, where gen's engine refuses it too. Red at a21b489: refused ×3 inside.
+    test-g4c-check-carried-from-another-domain-is-applied = {
+      expr =
+        let
+          d = t.defineType (siblingType // { admits = v: builtins.isAttrs v && (v.shell or "") != "fish"; });
+          x = userType // builtins.intersectAttrs { check = null; } d;
+          fish = [
+            {
+              file = "f.nix";
+              value.shell = "fish";
+            }
+          ];
+        in
+        [
+          (who (route x loc reg).config)
+          (who (route x loc fish).config)
+          (who
+            (gm.evalModuleTree { } [
+              { options.u = mkOption { type = x; }; }
+              { u.shell = "fish"; }
+            ]).config.u
+          )
+        ];
+      expected = [
+        "user"
+        "refused"
+        "refused"
+      ];
+    };
+    # C2 (spec v1 gate): a self-knot (F6's shape over the record itself) with no `admits`, or no `check`, is served
+    # its `merge`'s child, catchably everywhere; the route applies a `check` only where the record states one
+    test-g4c-self-knots-without-admits-or-check-served = {
+      expr =
+        let
+          knot =
+            drop:
+            let
+              x = removeAttrs userType drop // {
+                mergeDefs = userType.mergeDefs // {
+                  completed = x;
+                };
+              };
+            in
+            x;
+        in
+        map (drop: row (knot drop)) [
+          [ ]
+          [ "admits" ]
+          [ "check" ]
+        ];
+      expected = builtins.genList (_: {
+        route = "user";
+        merge = "user";
+      }) 3;
+    };
+    # A door's rebuild of a record (`mkOptionType` over an admits copy, and over nixpkgs' `addCheck` twin) is served
+    # what its rebuilt `merge` serves, identically ×3. Under a21b489's route with its check conjunct deleted, Lix
+    # serves both and Nix and Determinate refuse them.
+    test-g4c-door-rebuilds-served-as-the-merge-serves = {
+      expr =
+        let
+          n = v: builtins.isAttrs v && (v.shell or "") != "fish";
+        in
+        map (x: row x) [
+          (gm.mkOptionType (userType // { admits = n; }))
+          (gm.mkOptionType (nl.types.addCheck userType n))
+        ];
+      expected = builtins.genList (_: {
+        route = "user";
+        merge = "user";
+      }) 2;
+    };
+    # The library's own `merge` record edited: its applied function replaced (the route takes the child THROUGH that
+    # function, so it answers no evaluation and is refused by name), or its evaluation replaced (the function reads
+    # it, so route and merge serve the same child). Red at the route that reads `nestedEvaluation` directly: the
+    # first is served the user's child where its `merge` serves the sibling's, the second the sibling's where its
+    # `merge` serves the user's.
+    test-g4c-merge-record-edited-served-as-the-merge-serves-or-refused = {
+      expr =
+        if builtins.isAttrs userType.merge then
+          [
+            (row (
+              userType
+              // {
+                merge = userType.merge // {
+                  __functor = _: siblingType.merge;
+                };
+              }
+            ))
+            (row (
+              userType
+              // {
+                merge = userType.merge // {
+                  inherit (siblingType.merge) nestedEvaluation;
+                };
+              }
+            ))
+          ]
+        else
+          "the merge is not a functor record";
+      expected = [
+        {
+          route = "refused";
+          merge = "sibling";
+        }
+        {
+          route = "sibling";
+          merge = "sibling";
+        }
+      ];
+    };
+    # An evaluation's own type (`evalModuleTree … .type`), whose nesting fold reads its child's undeclared report
+    # beside `config`: the route serves its `merge`'s value, and refuses an undeclared definition by name as its
+    # `merge` does. Red at gen-merge a21b489: the route aborts uncatchably on all three evaluators
+    # (`attribute 'undeclared' missing`; its accessor answered the child under `config` alone).
+    test-g4c-an-evaluations-own-type = {
+      expr =
+        let
+          T =
+            (gm.evalModuleTree { } [
+              {
+                options.a = mkOption {
+                  type = t.str;
+                  default = "x";
+                };
+              }
+            ]).type;
+          d = [
+            {
+              file = "d.nix";
+              value.a = "y";
+            }
+          ];
+          u = [
+            {
+              file = "d.nix";
+              value.zz = 1;
+            }
+          ];
+        in
+        [
+          ((route T [ "x" ] d).config == T.merge [ "x" ] d)
+          (ok (route T [ "x" ] u).config)
+          (ok (T.merge [ "x" ] u))
+        ];
+      expected = [
+        true
+        false
+        false
       ];
     };
   };

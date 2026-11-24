@@ -5952,47 +5952,54 @@ let
   };
 
   # THE BRIDGE CHILD, RETAINED (den-hoag-t5ndo 1b): the one root evaluation a nesting type's exported `merge`
-  # makes over `defs` at `loc` (`bridged` → its `threaded` fold → `exportBridge.child`), returned whole to the
-  # caller rather than as its `config` alone. The child is taken THROUGH the record's own fold: `threaded` over
-  # the export's accessor whose `child` answers the whole record under `config`, so the route makes the fold's
-  # own call and cannot serve a child that fold does not make. It is the export's call, so the accessor is
-  # `exportBridge`'s (`rootRebuilds = false` is the export's own statement, not one inherited by accident).
-  # Refused by name where the type's `merge` is not that fold: a record that is not nesting (a leaf, a container,
-  # gen-schema's `refined` copy, which keeps `nests` and loses the sibling), a fold or a tree that is not the one
-  # its completion states, and a `merge` or `check` rewritten over the export. The `merge` witness compares the
-  # slot by pointer, as 2632d's guards compare `admits`: every instance type's `merge` sits at one source
-  # position, so a position witness passes a `merge` carried from another record. A record forging its own
-  # completion (`completed` pointing at itself) passes every witness, and is served its own fold's child, which
-  # is what its exported `merge` serves.
+  # makes over `defs` at `loc`, returned whole to the caller rather than as its `config` alone. It is read off the
+  # record's `merge` itself, by APPLYING it: a nesting fold's export publishes its `merge` as a functor record whose
+  # function answers its own `nestedEvaluation`'s `config`, and whose `nestedEvaluation` is the fold over the export's
+  # accessor answering the child whole (the export, below). The route applies that function to the record with its
+  # evaluation answering whole, so the child served is, by construction, the one the `merge` a caller applies makes.
+  # Nothing is compared and no position is read (den-hoag-oeygp criterion (4), den-hoag-i01nx): a record carrying
+  # another record's `merge` (by `//`, `intersectAttrs`, a restatement or a door's rebuild) is served that `merge`'s
+  # child, which is what its `merge` serves; a `merge` written over the export, or a `merge` record whose function no
+  # longer makes its evaluation, answers no evaluation and is refused by name. The record's `check`, where it states
+  # one, is APPLIED to each definition (never compared), after the fold's own domain refusal, as an engine applies it
+  # before the merge.
   nestedEvaluation =
     t: loc: defs:
     let
-      c = t.mergeDefs.completed or null;
+      m = t.merge or null;
       refuse =
         why:
         throw "gen-merge: evalNested: the option type `${nameOf t}' at `${showOption loc}' ${why}, so there is no nested evaluation its `merge' makes to return";
     in
-    if !(isAttrs t) || !(isNesting t) then
-      refuse "is not a gen nesting type (it states no nested tree with its threaded fold)"
-    # the completion is read off the fold, so a fold carried by `//` from another record brings that record's
-    # completion with it: the tree the completion states must be the one this record states
-    else if !(isAttrs c) || t.mergeDefs != c.mergeDefs || t.nests != c.nests then
-      refuse "folds by a fold that is not the one its record was completed with"
-    else if
-      builtins.intersectAttrs { merge = null; } t != builtins.intersectAttrs { merge = null; } c
-      || rewritesCheck t
-    then
-      refuse "has a `merge' or `check' rewritten over its export"
-    # a definition outside the domain is refused by the fold itself (`refusingOutside`), in the value path's words
+    if !(isAttrs t) || !(isAttrs m && m ? nestedEvaluation) then
+      if isAttrs t && isNesting t then
+        refuse "has a `merge' rewritten over its export (it carries no nested evaluation)"
+      else
+        refuse "is not a gen nesting type (it states no nested tree with its threaded fold)"
     else
       let
-        r = t.mergeDefs.threaded (
-          exportBridge // { child = site: { config = exportBridge.child site; }; }
+        # the fold refuses a definition outside its domain first, in the value path's words (`refusingOutside`)
+        # the child is taken THROUGH the merge's own application, over its record with the evaluation answering
+        # whole: a `merge` record whose applied function no longer reads its evaluation answers no record
+        r0 = m.__functor (
+          m // { nestedEvaluation = l: d: { config.__evalNestedRecord = m.nestedEvaluation l d; }; }
         ) loc defs;
+        r = r0.__evalNestedRecord;
       in
-      {
-        inherit (r) config provenance;
-      };
+      if !(isAttrs r0 && r0 ? __evalNestedRecord) then
+        refuse "has a `merge' rewritten over its export (its applied function does not make its nested evaluation)"
+      else if t ? check && !(all (d: t.check d.value) defs) then
+        builtins.seq r (
+          refuse "has a `check' that refuses definitions its `merge' folds (${
+            concatStringsSep ", " (
+              map (d: "${toString (d.file or "<def>")}") (filter (d: !(t.check d.value)) defs)
+            )
+          })"
+        )
+      else
+        {
+          inherit (r) config provenance;
+        };
 
   # THE FOREIGN-PROTOCOL TYPE MERGE, which is where the engine reaches this half. A foreign partner
   # has no gen relation and never will, so the question "do these two merge?" is asked in the
@@ -9647,7 +9654,34 @@ let
             fold = if !(t ? mergeDefs) then leafFold else bridged t.mergeDefs;
           in
           if !(t ? mergeDefs.headJudge) then
-            fold
+            if t ? mergeDefs.threaded && t ? nests then
+              # A NESTING FOLD'S `merge` CARRIES THE EVALUATION IT MAKES (den-hoag-t5ndo 1b): applied, it answers its
+              # own `nestedEvaluation`'s `config`, and its `nestedEvaluation` is the fold over the export's accessor
+              # answering the child whole, so `evalNested` takes the child through the very function a caller
+              # applies and needs no witness that the two agree (no field compared, no position read).
+              {
+                __functor =
+                  self: loc: defs:
+                  (self.nestedEvaluation loc defs).config;
+                # the child answered whole under `config`, with the report a nesting fold reads beside it
+                # (`modules.nix` `strictValue` refuses an undeclared finding by name, as the value path does)
+                nestedEvaluation = t.mergeDefs.threaded (
+                  exportBridge
+                  // {
+                    child =
+                      site:
+                      let
+                        c = exportBridge.child site;
+                      in
+                      {
+                        config = c;
+                        inherit (c) undeclared;
+                      };
+                  }
+                );
+              }
+            else
+              fold
           else
             {
               __functor = _: fold;

@@ -13961,32 +13961,34 @@ in
             msg = "^gen-merge: evalNested: the option type `string' at `users\\.tux' is not a gen nesting type \\(it states no nested tree with its threaded fold\\), so there is no nested evaluation its `merge' makes to return$";
           };
         };
-        test-g4-fold-from-sibling-refused = {
-          expr = force (route (userType // { inherit (siblingType) mergeDefs; }) one);
-          expectedError = {
-            type = "ThrownError";
-            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' folds by a fold that is not the one its record was completed with, so there is no nested evaluation its `merge' makes to return$";
-          };
-        };
         test-g4-merge-rewritten-refused = {
           expr = force (route (userType // { merge = _: _: { }; }) one);
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' has a `merge' or `check' rewritten over its export, so there is no nested evaluation its `merge' makes to return$";
+            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' has a `merge' rewritten over its export \\(it carries no nested evaluation\\), so there is no nested evaluation its `merge' makes to return$";
           };
         };
-        test-g4-merge-slot-from-sibling-refused = {
-          expr = force (route (userType // builtins.intersectAttrs { merge = null; } siblingType) one);
+        test-g4-merge-record-function-replaced-refused = {
+          expr = force (
+            route (
+              userType
+              // {
+                merge = userType.merge // {
+                  __functor = _: siblingType.merge;
+                };
+              }
+            ) one
+          );
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' has a `merge' or `check' rewritten over its export, so there is no nested evaluation its `merge' makes to return$";
+            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' has a `merge' rewritten over its export \\(its applied function does not make its nested evaluation\\), so there is no nested evaluation its `merge' makes to return$";
           };
         };
-        test-g4-check-rewritten-refused = {
-          expr = force (route (userType // { check = _: true; }) one);
+        test-g4-check-refusing-a-definition-refused = {
+          expr = force (route (userType // { check = _: false; }) one);
           expectedError = {
             type = "ThrownError";
-            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' has a `merge' or `check' rewritten over its export, so there is no nested evaluation its `merge' makes to return$";
+            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' has a `check' that refuses definitions its `merge' folds \\(reg\\.nix\\), so there is no nested evaluation its `merge' makes to return$";
           };
         };
       };
