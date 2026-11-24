@@ -553,17 +553,18 @@ in
     };
     # A held step does not hold a partner recovered from its functor: holding that rebuilt fold beside an ad-hoc held
     # record refuses free values main and nixpkgs' twin serve (ADR-0039 parity-defect rule (2)). So the element 7 or 9
-    # a refinement rejects is served at every spelling, raw and through the door, as main serves it: an open defect
-    # (SILENT-D, den-hoag-zvxz6), asserted as the value it produces so a build refusing it reds it. The element every
-    # declaration admits is served.
+    # a refinement rejects is served at the spellings whose functor does not rebuild the refinement, raw and through
+    # the door: an open defect (SILENT-D, den-hoag-zvxz6), asserted as the value it produces so a build refusing it reds
+    # it. Where the refinement's functor rebuilds itself (`self`), the met element owes it and the element is refused (up
+    # the severity ladder, ADR-0039 parity-defect rule (3)). The element every declaration admits is served.
     test-a-held-step-serves-what-a-recovered-partner-rejects = {
       expr = heldGrid;
       expected = nl.mapAttrs (
-        _: _:
+        sp: _:
         nl.genAttrs [ "raw" "door" ] (
           _:
           nl.genAttrs [ "ABG" "ABGG" "AGBG" "BAG" ] (w: [
-            [ (if w == "BAG" then 9 else 7) ]
+            (if sp == "self" then "REFUSED" else [ (if w == "BAG" then 9 else 7) ])
             [ 8 ]
           ])
         )

@@ -3713,6 +3713,269 @@ let
   # (`kept`) carries nothing, and a constant constructor's own record crosses as itself. A `verify` is read on the merged
   # value, as gen's own fold reads one (`checked`) and as the stock-host guard reads one (`guardedOption`): a definition
   # alone is not the value it refines, and it is stated where a fold asks membership (`verifiedMerge`).
+  # ── (prototype, den-hoag-xmoua v1) the door's role-meet helpers ──
+  # a role holding a met record read as its root join, at every depth of the element and alternatives roles
+  doorRoot = x: if isAttrs x && x ? __meetJoin then doorRoot x.__meetJoin else x;
+  doorStrip =
+    x:
+    let
+      x1 = doorRoot x;
+      e = carriedAt "element" x1;
+      al = carriedAt "alternatives" x1;
+      y =
+        if !(isAttrs x1) then
+          null
+        else if e != null then
+          rebuiltOverAt "element" (doorStrip e) x1
+        else if al != null then
+          rebuiltOverAt "alternatives" (map doorStrip al) x1
+        else
+          null;
+    in
+    if isAttrs y then y else x1;
+  # an ad-hoc (v2-incoherent) override at the record or at any role below it, to the walk's fuel
+  doorIncoherent =
+    let
+      go =
+        fuel: x:
+        isAttrs x
+        && (
+          isV2 x && !(x.check.isV2MergeCoherent or false)
+          ||
+            fuel > 0
+            && (
+              let
+                e = carriedAt "element" x;
+                al = carriedAt "alternatives" x;
+              in
+              e != null && go (fuel - 1) e
+              || al != null && builtins.any (go (fuel - 1)) al
+              || builtins.any (o: isAttrs o && (o._type or null) == "option" && go (fuel - 1) (o.type or null)) (
+                builtins.attrValues (x.nestedTypes or { })
+              )
+            )
+        );
+    in
+    go importedTypeWalkFuel;
+  # a receiver's roles as the obligation their met records carry (`__meetOwed`), never their join's check (Q2 arm (a))
+  doorDebtView =
+    x:
+    let
+      e = carriedAt "element" x;
+      al = carriedAt "alternatives" x;
+      y =
+        if !(isAttrs x) then
+          null
+        else if e != null then
+          rebuiltOverAt "element" (doorDebtView e) x
+        else if al != null then
+          rebuiltOverAt "alternatives" (map doorDebtView al) x
+        else
+          null;
+      b = if isAttrs y then y else x;
+    in
+    if isAttrs x && x ? __meetOwed then b // { check = x.__meetOwed; } else b;
+  # the join a door returns, closed under nixpkgs' later rebuilds at its roles only (Q1 arm (iv)): no top check is carried
+  doorRoleClosed =
+    j:
+    j
+    // {
+      typeMerge =
+        f:
+        let
+          p = importedPartner f;
+          j0 = (doorStrip j).typeMerge f;
+        in
+        if j0 == null || !(isAttrs p) || false then
+          j0
+        else
+          doorRoleClosed (rolesMet null j0 (doorDebtView j) p);
+    };
+  # the role meet, one definition read by the engine (lib/modules.nix) and both doors
+  rolesMet =
+    rewrites: r: a: b:
+    let
+      # (each role's three records, and the helpers below, written where they are read: a binding is a thunk per call)
+      el = map (carriedAt "element") [
+        r
+        a
+        b
+      ];
+      al = map (carriedAt "alternatives") [
+        r
+        a
+        b
+      ];
+      # a carried role's own join met with the operands' at that role, and at every role below it
+      innerMet =
+        o: r': a': b':
+        # a join holding an ad-hoc override at this role keeps it, refused by name where it folds, as nixpkgs refuses
+        # it: the meet would mark it coherent. Asked of the role record the meet reads, so it forces nothing the meet
+        # would not (`adHocChecked`, the engine's own reading of the v2 protocol)
+        if adHocChecked r' then
+          r'
+        else
+          (if o ? tag || o ? bNames then metWith.metWith o else metWith.core) false (rolesMet o r' a' b') (
+            if o == null || o ? tag then
+              [
+                a'
+                b'
+              ]
+            else
+              o.xs
+          );
+    in
+    if builtins.all (x: x != null) el then
+      (
+        let
+          # a role's thread: a step thread's own (`readers`, the fold's), or the role's operands read off a thread with no debt tree;
+          # a step owing no debt hands the role its operands' tree comparisons with the join's (`tag`), made once at the descent's
+          # top and read node by node below it (`metWith.anything.below`), forced only where a role meet relativises
+          m = innerMet (
+            if rewrites == null || rewrites ? tag then
+              {
+                tag = metWith.anything.below rewrites r 0 a b (builtins.elemAt el 0) (builtins.elemAt el 1) (
+                  builtins.elemAt el 2
+                );
+              }
+            else if rewrites ? readers then
+              metWith.anything.inner rewrites r 0 (carriedAt "element") (
+                rewrites.readers rewrites (t: t.el) (carriedAt "element")
+              )
+            else
+              metWith.anything.functorRecord rewrites (carriedAt "element")
+          ) (builtins.elemAt el 0) (builtins.elemAt el 1) (builtins.elemAt el 2);
+        in
+        if sameValue m (builtins.elemAt el 0) then
+          r
+        else
+          (
+            let
+              x = rebuiltOverAt "element" m r;
+            in
+            if x == null then r else x
+          )
+      )
+    else if builtins.all (x: x != null) al then
+      (
+        let
+          m = builtins.genList (
+            i:
+            innerMet
+              (
+                if rewrites == null || rewrites ? tag then
+                  {
+                    tag =
+                      metWith.anything.below rewrites r i a b (builtins.elemAt (builtins.elemAt al 0) i)
+                        (builtins.elemAt (builtins.elemAt al 1) i)
+                        (builtins.elemAt (builtins.elemAt al 2) i);
+                  }
+                else if rewrites ? readers then
+                  metWith.anything.inner rewrites r i
+                    (
+                      d:
+                      let
+                        x = carriedAt "alternatives" d;
+                      in
+                      if x == null then null else builtins.elemAt x i
+                    )
+                    (
+                      rewrites.readers rewrites (t: builtins.elemAt t.priorityBand i) (
+                        d:
+                        let
+                          x = carriedAt "alternatives" d;
+                        in
+                        if x == null then null else builtins.elemAt x i
+                      )
+                    )
+                else
+                  metWith.anything.functorRecord rewrites (
+                    d:
+                    let
+                      x = carriedAt "alternatives" d;
+                    in
+                    if x == null then null else builtins.elemAt x i
+                  )
+              )
+              (builtins.elemAt (builtins.elemAt al 0) i)
+              (builtins.elemAt (builtins.elemAt al 1) i)
+              (builtins.elemAt (builtins.elemAt al 2) i)
+          ) 2;
+        in
+        if
+          sameValue (builtins.elemAt m 0) (builtins.elemAt (builtins.elemAt al 0) 0)
+          && sameValue (builtins.elemAt m 1) (builtins.elemAt (builtins.elemAt al 0) 1)
+        then
+          r
+        else
+          (
+            let
+              x = rebuiltOverAt "alternatives" m r;
+            in
+            if x == null then r else x
+          )
+      )
+    else
+      # a held option (`attrTag`'s tag) is met as an element is: the join's option with both operands'
+      (
+        let
+          # the meet is handed the operands without `verify`, which is read once on the MERGED value, as the
+          # held option's carriage reads it (`carriedAtDepth`'s `optioned`): met per definition, it would
+          # refuse two definitions whose merged value it admits
+          unverified = d: if d ? verify then builtins.removeAttrs d [ "verify" ] else d;
+          x = rebuiltOverAt "options" {
+            from = [
+              a
+              b
+            ];
+            over =
+              _: _: o: ds:
+              if length ds == 2 then
+                let
+                  vs = filter (d: d ? verify) ds;
+                  c = innerMet null o.type (unverified (head ds)) (unverified (builtins.elemAt ds 1));
+                  verdict = v: builtins.foldl' (e: d: if e != null then e else d.verify v) null vs;
+                in
+                if vs == [ ] then
+                  c
+                else if c.merge ? v2 then
+                  c
+                  // {
+                    merge = {
+                      __functor =
+                        self: loc: defs:
+                        (self.v2 { inherit loc defs; }).value;
+                      v2 =
+                        args:
+                        let
+                          v = c.merge.v2 args;
+                          e = verdict v.value;
+                        in
+                        if v.headError != null || e == null then v else v // { headError.message = e; };
+                    };
+                  }
+                else
+                  c
+                  // {
+                    merge =
+                      loc: defs:
+                      let
+                        v = c.merge loc defs;
+                        e = verdict v;
+                      in
+                      if e == null then
+                        v
+                      else
+                        throw "gen-merge: a definition for option `${showOption loc}' is not of type `${
+                          if builtins.isString (c.description or null) then c.description else nameOf c
+                        }'. TypeError: ${e}";
+                  }
+              else
+                o.type;
+          } r;
+        in
+        if x == null then r else x
+      );
   rebuildClosed = {
     __functor =
       self: t:
@@ -3793,7 +4056,36 @@ let
               typeMerge =
                 f:
                 let
-                  j = r.typeMerge f;
+                  p = importedPartner f;
+                  root = x: if isAttrs x && x ? __meetJoin then root x.__meetJoin else x;
+                  strip =
+                    x:
+                    let
+                      x1 = root x;
+                      e = carriedAt "element" x1;
+                      al = carriedAt "alternatives" x1;
+                      y =
+                        if !(isAttrs x1) then
+                          null
+                        else if e != null then
+                          rebuiltOverAt "element" (strip e) x1
+                        else if al != null then
+                          rebuiltOverAt "alternatives" (map strip al) x1
+                        else
+                          null;
+                    in
+                    if isAttrs y then y else x1;
+                  metIn =
+                    x:
+                    isAttrs x
+                    && (
+                      x ? __meetJoin
+                      || (x._type or null) == "option" && isAttrs (x.type or null) && x.type ? __meetJoin
+                      || isList x && builtins.any (y: isAttrs y && y ? __meetJoin) x
+                    );
+                  accumulates = !moduleSet && builtins.any metIn (builtins.attrValues (r.nestedTypes or { }));
+                  j0 = if accumulates && isAttrs p then (strip r).typeMerge f else r.typeMerge f;
+                  j = if j0 == null || moduleSet || !(isAttrs p) then j0 else rolesMet null j0 (doorDebtView r) p;
                 in
                 if j == null || !moduleSet && !(t ? verify) && self.kept t == self.kept j then
                   j
@@ -6919,6 +7211,11 @@ let
               conj;
           _checkWitness = j._checkWitness or j.check;
           __meetJoin = j;
+          # (prototype, den-hoag-xmoua v1 Q2) the declaration-derived obligation, apart from the join's own check
+          __meetOwed = {
+            __functor = _: v: builtins.all (c: c v) ocs;
+            isV2MergeCoherent = true;
+          };
           __shapeTree = metWith.anything.shapeOf importedTypeWalkFuel j;
           merge =
             if v2 then
@@ -9727,7 +10024,7 @@ let
             meet =
               meets: j: os: d:
               let
-                m = metWith.core meets j os;
+                m = metWith.core meets (if length os == 2 then rolesMet null j (head os) (elemAt os 1) else j) os;
               in
               if isAttrs d && d ? verify && d ? carries && isList (d.getSubModules or null) then
                 rebuildClosed.rebuilt d.verify m
@@ -9739,8 +10036,15 @@ let
             let
               j = t.retainedRelation.typeMerge f;
             in
-            if j == null || !(isAttrs f && f ? __declared) then
+            if j == null then
               j
+            else if !(isAttrs f && f ? __declared) then
+              (
+                let
+                  p = importedPartner f;
+                in
+                if isAttrs p then doorRoleClosed (rolesMet null j exported p) else j
+              )
             else
               meet false j [ f.__declared ] f.__declared
           else
@@ -9899,6 +10203,7 @@ in
     keepStamp
     carriedCopy
     rebuildClosed
+    rolesMet
     carrierTolerated
     importReads
     ownEvaluation
