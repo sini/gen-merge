@@ -1,11 +1,12 @@
 # A `defineType` return's join under nixpkgs' `lib.evalModules` meets EVERY declaration it has folded (ADR-0039 THE
 # MEET; the converse: a gen `typeMerge` called inside nixpkgs' evaluation is gen's code; den-hoag-pfbow). nixpkgs
 # reverses a redeclaration's list and hands the receiver only each partner's functor, so the door's return names itself
-# there (`functor.__declared`) and its `typeMerge` meets the named partners, threaded through every later join. Cells,
-# each mounted in nixpkgs' `lib.evalModules` with every declaration through `defineType`:
+# there (`functor.__declared`) and its `typeMerge` meets the named partners, kept by the met record at every later join.
+# Cells, each mounted in nixpkgs' `lib.evalModules` with every declaration through `defineType`:
 #  - the CHECK cells: a checked declaration before an unchecked one (the receiver), for a nixpkgs `attrTag` leaf, a
 #    foreign self-returning leaf (`K`), and `K` inside an `attrTag`; a definition the check rejects is refused, one it
-#    admits is served with the all-nixpkgs twin's value. `K` declared checked between two unchecked declarations holds the threading;
+#    admits is served with the all-nixpkgs twin's value; `K` declared checked between two unchecked declarations holds a
+#    later join;
 #  - the UNION cells (reading 1, enum extension stays a union): two enums joined in either order serve a member of each;
 #  - the RELATIVISED cells (reading 2): a check over an enum is owed relative to its own parameters, so a value it
 #    rejects inside them is refused and one outside them is served;
@@ -13,9 +14,9 @@
 #  - the RESIDUE cell: a constant constructor's own record (`int`) crosses the door as itself, so a join it receives is
 #    nixpkgs' `defaultTypeMerge`, and the earlier declaration's check is nixpkgs' drop (ADR-0039 "Not covered"). Pinned
 #    to the twin's answer: nixpkgs' own drop, not correct behaviour.
-# Red: the check, verify and threading cells with the return naming no declaration (`functor` unchanged), or with `met`
-# not threaded (`dd` reset to the partner alone); the union cells with the met partners carried whole (`carryBy`), and
-# `union-ab-a` / `union-ba-b` / `relativised-cb-c` with the receiver's own check carried whole (main's `close`).
+# Red: the check, verify and later-join cells with the return naming no declaration and the join meeting only its own
+# (the base's `close`); the union cells with the named partners carried whole (`carryBy`); `union-ab-a`, `union-ba-b`
+# and `relativised-cb-c` with the receiver's own check carried whole (the base's `close`, beside the partners met).
 { genMerge, nixpkgsLib, ... }:
 let
   gm = genMerge;
