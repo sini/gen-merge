@@ -3303,9 +3303,17 @@ let
           check = {
             # a FOREIGN carrier's own check is asked elsewhere: a declaration list's root is mounted, and
             # the mount meets its rebuild's (`homedRootFixed`); a v2 element's merge computes its own
-            # `headError`. A gen carrier and a v1 element are asked it here.
+            # `headError`. A gen carrier and a v1 element are asked it here. A MET carrier is the meet over the declarations
+            # it was rebuilt from, so its check already owes each of them once (`meetOf`): it is asked alone, as a step over
+            # a met accumulator owes its debt once (`lib/modules.nix` `mergeDeclaredTypes`). Asked beside `holds`, each
+            # declaration's chain would be asked once from each side, at every step (den-hoag-kv9ne)
             __functor =
-              if r ? typeMergeRel || top != true && !(isV2 r) then _: x: r.check x && holds x else _: holds;
+              if r ? __meetJoin && (r ? typeMergeRel || top != true && !(isV2 r)) then
+                _: r.check
+              else if r ? typeMergeRel || top != true && !(isV2 r) then
+                _: x: r.check x && holds x
+              else
+                _: holds;
             isV2MergeCoherent = true;
           };
         }

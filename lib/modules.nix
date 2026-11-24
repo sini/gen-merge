@@ -894,7 +894,21 @@ let
               if length ds == 2 then
                 let
                   vs = filter (d: d ? verify) ds;
-                  c = innerMet null o.type (unverified (head ds)) (unverified (builtins.elemAt ds 1));
+                  # THE STEP'S CARRIER IS ASKED, ITS TWO DECLARATIONS OWED (den-hoag-kv9ne), as `mergeDeclaredTypes` asks a
+                  # step's carrier (`__meetJoin`) and owes its debt: the join's option is the meet nixpkgs' relation built
+                  # over these same two declarations, so it is met here at its root carrier, past every met record. Met
+                  # whole, the declarations' checks it already owes would be owed again beside them, once more per step
+                  c = innerMet null (
+                    if o.type ? __meetJoin then
+                      (
+                        let
+                          carrier = t: if t ? __meetJoin then carrier t.__meetJoin else t;
+                        in
+                        carrier o.type.__meetJoin
+                      )
+                    else
+                      o.type
+                  ) (unverified (head ds)) (unverified (builtins.elemAt ds 1));
                   verdict = v: builtins.foldl' (e: d: if e != null then e else d.verify v) null vs;
                 in
                 if vs == [ ] then

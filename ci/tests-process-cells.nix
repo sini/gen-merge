@@ -377,6 +377,110 @@ let
           [ { new = 3; } ]
       )
     )).config.new;
+  # den-hoag-kv9ne: an option declared n times as an `attrTag` holding an option `b` beside a module-set tag, the first
+  # declaration's `b` refined (`v != 1`), through a door: raw, `types.defineType` (d0), `mkOptionType` (d1) or
+  # `types.mkOptionType` (d2). Read on gen's engine with the definition `{ b = v; }`: `b`'s value, or null where refused.
+  # `traced` traces the run's label each time an owed check is asked: the refinement (`raw`, `door`), the stricter join a
+  # foreign int's own relation answers (`kp`, v > 0), or the stricter join a met record an author declares owes whole (`met`).
+  tagJoin =
+    {
+      case,
+      door ? "raw",
+      n ? 8,
+      v ? 2,
+      traced ? false,
+    }:
+    let
+      nl = import "${nixpkgsSrc}/lib";
+      np = nl.types;
+      t = m.types;
+      ask = c: if traced then (x: builtins.trace label (c x)) else c;
+      D = {
+        raw = x: x;
+        d0 = t.defineType;
+        d1 = m.mkOptionType;
+        d2 = t.mkOptionType;
+      };
+      sub = np.submodule {
+        options.a = nl.mkOption {
+          type = np.str;
+          default = "x";
+        };
+      };
+      tag =
+        x:
+        np.attrTag {
+          a = nl.mkOption { type = sub; };
+          b = nl.mkOption { type = x; };
+        };
+      c = tag (np.addCheck np.int (ask (x: x != 1)));
+      u = tag np.int;
+      kstrict = nl.mkOptionType {
+        name = "kstrict";
+        check = ask (x: builtins.isInt x && x > 0);
+        merge = nl.mergeEqualOption;
+      };
+      kp =
+        nl.mkOptionType {
+          name = "kp";
+          check = builtins.isInt;
+          merge = nl.mergeEqualOption;
+          functor = {
+            name = "kp";
+            type = null;
+            wrapped = null;
+            payload = { };
+            binOp = _: _: { };
+          };
+        }
+        // {
+          typeMerge = _: kstrict;
+        };
+      # the author-declared met record: `x`'s merged type over a verify copy and a narrowing record whose relation
+      # answers the (traced) positive int, re-declared twice in `y` on nixpkgs' engine (`exported-typemerge-debt`'s plant)
+      positive = np.ints.positive // {
+        check = ask np.ints.positive.check;
+      };
+      narrow = np.mkOptionType {
+        name = "nTM";
+        check = builtins.isInt;
+        functor = np.defaultFunctor "int";
+        typeMerge = f: if f.name == "int" then positive else null;
+      };
+      X =
+        (nl.evalModules {
+          modules = map (ty: { options.x = nl.mkOption { type = ty; }; }) [
+            (m.mkOptionType (t.int // { verify = x: if builtins.bitAnd x 1 == 0 then null else "odd"; }))
+            (m.mkOptionType narrow)
+          ];
+        }).options.x.type;
+      read =
+        eng: tys: d:
+        let
+          ms = map (ty: { options.o = nl.mkOption { type = ty; }; }) tys ++ [ { o = d; } ];
+          x = (if eng == "np" then nl.evalModules { modules = ms; } else m.evalModuleTree { } ms).config.o;
+          r = builtins.tryEval (builtins.deepSeq x x);
+        in
+        if r.success then r.value else null;
+      # raw N = 2 of `kp` is den-hoag-awye0 (gen's engine admits -1 there); two distinct records are read here, which it refuses
+      tys =
+        if case == "kp" then
+          builtins.genList (_: tag kp) n
+        else
+          builtins.genList (i: D.${door} (if i == 0 then c else u)) n;
+    in
+    if case == "met" then
+      read "np" [
+        X
+        X
+      ] v
+    else
+      (
+        let
+          r = read "ge" tys { b = v; };
+        in
+        if r == null then null else r.b
+      );
   metCost =
     mode: n:
     let
@@ -765,6 +869,76 @@ let
     met-cost-s2-200 = metCost "s2" 200;
     met-cost-s3-100 = metCost "s3" 100;
     met-cost-s3-200 = metCost "s3" 200;
+    # den-hoag-kv9ne: the tag join's cost, read by the runner as calls between n = 8 and 16 on each door; and each owed
+    # check of the four discriminators asked once where every check admits, its refusal served where one rejects
+    tag-join-cost-raw-8 = tagJoin { case = "raw"; };
+    tag-join-cost-raw-16 = tagJoin {
+      case = "raw";
+      n = 16;
+    };
+    tag-join-cost-d0-8 = tagJoin {
+      case = "door";
+      door = "d0";
+    };
+    tag-join-cost-d0-16 = tagJoin {
+      case = "door";
+      door = "d0";
+      n = 16;
+    };
+    tag-join-cost-d1-8 = tagJoin {
+      case = "door";
+      door = "d1";
+    };
+    tag-join-cost-d1-16 = tagJoin {
+      case = "door";
+      door = "d1";
+      n = 16;
+    };
+    tag-join-cost-d2-8 = tagJoin {
+      case = "door";
+      door = "d2";
+    };
+    tag-join-cost-d2-16 = tagJoin {
+      case = "door";
+      door = "d2";
+      n = 16;
+    };
+    owed-once-raw = tagJoin {
+      case = "raw";
+      traced = true;
+    };
+    owed-once-raw-refused = tagJoin {
+      case = "raw";
+      v = 1;
+    };
+    owed-once-door = tagJoin {
+      case = "door";
+      door = "d1";
+      traced = true;
+    };
+    owed-once-door-refused = tagJoin {
+      case = "door";
+      door = "d1";
+      v = 1;
+    };
+    owed-once-kp = tagJoin {
+      case = "kp";
+      n = 2;
+      traced = true;
+    };
+    owed-once-kp-refused = tagJoin {
+      case = "kp";
+      n = 2;
+      v = -1;
+    };
+    owed-once-met = tagJoin {
+      case = "met";
+      traced = true;
+    };
+    owed-once-met-refused = tagJoin {
+      case = "met";
+      v = -2;
+    };
     # den-hoag-8tmd5: the staged declaration passes' cost, read by the runner as the thunks the rename
     # adds over the direct definition.
     staged-cost-plain = stagedCost false;

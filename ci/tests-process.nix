@@ -107,7 +107,7 @@
           # so no gate reading this program's exit or its line can be satisfied by it.
           cellBlocks="outer-options-read rename-cycle-read undeclared-gen-abort engine-option-names mt-regress
             own-check-reads candidate-modules phrase-cycle foreign-knot name-keyset cyclic-derive key-walk-wide
-            prefix-keyed identity-walk met-cost spine-cost staged-cost closure-walk empty-read-cost graph-cost reuse-cost"
+            prefix-keyed identity-walk met-cost tag-join-cost owed-once spine-cost staged-cost closure-walk empty-read-cost graph-cost reuse-cost"
           allBlocks="modules-sh nixos-bar hm-bar fp-bar ${pkgs.lib.concatStringsSep " " benches} $cellBlocks"
           tpsel_partial=0 tpsel_picked="" tpsel_skipped="" tpsel_selected=" "
           [ -z "''${TESTS_PROCESS_ONLY+x}" ] || tpsel_partial=1
@@ -547,6 +547,38 @@
           done
           endblk; fi
 
+          if sel tag-join-cost; then blk tag-join-cost 8
+          # den-hoag-kv9ne (ADR-0032): an option redeclared as an `attrTag` holding an option beside a module-set tag costs
+          # calls linear in its declarations on every door: calls(16) - calls(8) at most 9600, 1200 per declaration. Asked
+          # once per step from each side, the held option's owed chain doubled per declaration (6.4M calls at n = 16).
+          for door in raw d0 d1 d2; do
+            callsOf "tag-join-cost-$door-8"
+            [ "$val" = "2" ] || die "tag-join-cost-$door-8" "expected value 2, got '$val'"
+            c8=$calls
+            callsOf "tag-join-cost-$door-16"
+            [ "$val" = "2" ] || die "tag-join-cost-$door-16" "expected value 2, got '$val'"
+            [ $((calls - c8)) -le 9600 ] || die "tag-join-cost-$door-16" "a redeclared tag join costs $((calls - c8)) calls between n = 8 and 16, over its bound 9600"
+            echo "tag-join-cost $door: $((calls - c8)) calls between n = 8 and 16 (bound 9600)"
+          done
+          endblk; fi
+
+          if sel owed-once; then blk owed-once 8
+          # den-hoag-kv9ne (ADR-0039 THE MEET): each owed check is asked ONCE for a value every check admits, and its
+          # refusal is served for a value it rejects. A check asked twice reds the count, a dropped one the refusal (or the
+          # count, 0): the refinement of a redeclared tag's held option (raw, door), a foreign int's stricter own join
+          # (kp), and an author-declared met record owed whole (met).
+          for c in raw door kp met; do
+            evalArm "owed-once-$c"
+            [ "$rc" -eq 0 ] || die "owed-once-$c" "expected exit 0, got $rc"
+            [ "$val" = "2" ] || die "owed-once-$c" "expected value 2, got '$val'"
+            n=$(traced)
+            [ "$n" = "1" ] || die "owed-once-$c" "expected the owed check asked once, the spy counted $n"
+            evalArm "owed-once-$c-refused"
+            [ "$rc" -eq 0 ] || die "owed-once-$c-refused" "expected exit 0, got $rc"
+            [ "$val" = "null" ] || die "owed-once-$c-refused" "expected the refusal (null), got '$val'"
+          done
+          endblk; fi
+
           if sel spine-cost; then blk spine-cost 2
           # den-hoag-y4w78 (ADR-0032): the spine's cost over a chain of `listOf` over a submodule, as the thunks to read
           # its module set at depth 30 over depth 1. A gen container answers its own `getSubModules = null` once the rest
@@ -680,12 +712,12 @@
           # 0/0 is a false pass: the runner must have executed every cell above.
           if [ "$tpsel_partial" = 0 ]; then
             [ "$tpsel_blkSeen" = "$(echo $cellBlocks | wc -w)" ] || die runner "ran $tpsel_blkSeen cell blocks, want $(echo $cellBlocks | wc -w)"
-            [ "$ran" = "92" ] || die runner "expected 92 evaluations, ran $ran"
-            echo "tests-process: 92 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+            [ "$ran" = "108" ] || die runner "expected 108 evaluations, ran $ran"
+            echo "tests-process: 108 cells, every exit read unpiped, every death on its named channel, every count read" > $out
           else
             [ "$ran" = "$tpsel_blkWant" ] || die runner "the selected blocks declare $tpsel_blkWant evaluations, ran $ran"
             [ "$(echo $tpsel_picked | wc -w)" = "$tpsel_n" ] && [ -n "$tpsel_picked" ] || die runner "selected $tpsel_n blocks ($tpsel_selected), ran:''${tpsel_picked:- none}"
-            echo "tests-process: PARTIAL — $ran of 92 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
+            echo "tests-process: PARTIAL — $ran of 108 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
           fi
         ''
         + ''
