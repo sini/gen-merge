@@ -5767,6 +5767,37 @@ let
             e:
             genFace e
             // {
+              # The empty value nixpkgs' fold reads off the element it is handed (`mergeDefinitions`, a body nothing
+              # defined). A gen element answers the rebuild with its export, built before any `//` its author wrote.
+              # Where the root keeps the record written (`ev.child ev` false, as `threadedAs`' `whenEmpty` asks), it
+              # is the empty value of the record declared at the element's position (the copy of `e`, matched as
+              # `carriedElement` matches one), found below any foreign record the rebuild passes the marker through
+              # (`coercedTo`, `uniq`, a nested `functionTo`) and never inside a gen record, which answers the marker
+              # itself; where the fix-up rebuilds it, the export's own. The root is asked first, so a rebuilding root
+              # never searches. Bounded by the walks' fuel.
+              emptyValue =
+                let
+                  go =
+                    fuel: ds:
+                    prelude.concatMap (
+                      d:
+                      if !(isAttrs d) then
+                        [ ]
+                      else if d ? _checkWitness then
+                        (if d._checkWitness == e._checkWitness then [ d ] else [ ])
+                      else if fuel > 0 then
+                        go (fuel - 1) (
+                          prelude.concatMap (v: if isList v then v else [ v ]) (prelude.attrValues (positionsOf d))
+                        )
+                      else
+                        [ ]
+                    ) ds;
+                  ws = go importedTypeWalkFuel declared;
+                in
+                if !(e ? _checkWitness) || ev.child ev || length ws != 1 then
+                  e.emptyValue
+                else
+                  (head ws).emptyValue or e.emptyValue;
               # A threaded element folded at a step the split did not capture (a value the merge
               # returns, such as `functionTo`'s function body) keeps its fold, and its accessor's
               # `child` refuses by name: only a nested-tree read refuses, so a member that never

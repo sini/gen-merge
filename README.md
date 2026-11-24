@@ -1566,9 +1566,14 @@ reads still diverge from nixpkgs. gen's fix-up of a foreign `attrTag` root reach
 states no set; an `attrTag` states a set as soon as one tag does, so a root test covers single-element
 steps only. And the value-only fold (`mergeOption`), through which a
 `_module.specialArgs` re-declared with a `type` folds the caller's set, carries no root, so below a union
-root there it reads a record stating a module set as rebuilt. And a nixpkgs `functionTo` over a record
-whose `emptyValue` a `//` overrides reads that record as rebuilt (`[]` for a list), below an `either` in
-gen's engine and at the bridge below a gen `attrsOf`, where nixpkgs reads the override. Where gen rebuilds
+root there it reads a record stating a module set as rebuilt. And a foreign container gen rebuilds over
+its element (a nixpkgs `functionTo`, `coercedTo` or `uniq`) hands nixpkgs' fold the element record
+written at that position, so a function body nothing defined reads the `emptyValue` a `//` states there,
+except in gen's engine where the option's own type is that container directly below the union: the key
+walk reaches no position there, and the body reads the record as rebuilt (`[]` for a list). The written
+record is found by its check witness, so where two positions of one container hold copies of one record
+the rebuild's value is read, and on Lix, where two equal-source constructions compare equal, so it is for
+two such constructions. Where gen rebuilds
 a foreign container by its functor (the mount's per-level rebuild, the re-home over a completed element), the functor
 rebuilds the constructor and not a `//` over it, so the empty value nixpkgs' own rebuild states is
 carried onto the functor's rebuild, as its `check` is: nixpkgs' `nonEmptyListOf (submodule …)` keeps
