@@ -8832,7 +8832,13 @@ let
     then
       (
         let
-          rehomed = homedAt "mkOptionType" null t;
+          # the stock container's fold replaces the descriptor's merge, never an empty value the descriptor states,
+          # which nixpkgs' fold reads off the record written (an option nothing defined), read as the import reads a
+          # foreign record's (`importedEmpty`); a descriptor stating none keeps the empty value of the container it is
+          # homed as, the type its functor names
+          rehomed =
+            homedAt "mkOptionType" null t
+            // (if t ? emptyValue then { emptyValue = importedEmpty t; } else { });
         in
         {
           imported = rehomed;
