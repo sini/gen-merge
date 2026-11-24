@@ -8845,9 +8845,12 @@ let
     then
       (
         let
-          # the stock container's fold replaces the descriptor's merge, never the empty value it states, which nixpkgs'
-          # fold reads off the record written (an option nothing defined); one it does not state stays the container's
-          rehomed = homedAt "mkOptionType" null t // builtins.intersectAttrs { emptyValue = null; } t;
+          # the stock container's fold replaces the descriptor's merge, never its empty value, which nixpkgs' fold reads
+          # off the record written (an option nothing defined): the one it states, else the door's default for one
+          # stating none, read as the import reads a foreign record's (`importedEmpty`)
+          rehomed = homedAt "mkOptionType" null t // {
+            emptyValue = importedEmpty t;
+          };
         in
         {
           imported = rehomed;
