@@ -63,6 +63,7 @@
   # The nested tree's door and gen's own containers (den-hoag-n6dh7 items 5, 7), each read lazily:
   # the engine above supplies both, closing a loop this unit otherwise keeps a chain.
   nestedTreeAt,
+  observedTreeAt,
   emptyTreeAt,
   mergeDefsThreaded,
   constructors,
@@ -5987,11 +5988,19 @@ let
     else
       let
         r = t.mergeDefs.threaded (
-          exportBridge // { child = site: { config = exportBridge.child site; }; }
+          exportBridge
+          // {
+            child = site: {
+              config =
+                if site ? containerNodes then exportBridge.child site else observedTreeAt site.nests.calledMode site;
+            };
+          }
         ) loc defs;
       in
       {
         inherit (r) config provenance;
+        # 2b: the survivors observation of that same child, a function of a location (`survivorsOf`)
+        survivors = r._survivors;
       };
 
   # THE FOREIGN-PROTOCOL TYPE MERGE, which is where the engine reaches this half. A foreign partner

@@ -184,6 +184,7 @@ let
       showConflict
       mergeDescriptorDefault
       nestedTreeAt
+      observedTreeAt
       emptyTreeAt
       types
       mergeDefsThreaded
@@ -5613,11 +5614,16 @@ let
   # nested below it is a child of this evaluation, selected by its own type in `childTree`, and stays partial,
   # because its reader is the gen fold that consumes it (a guard carrier under a mounted aspect tree), so a
   # nixpkgs consumer at depth 1 or more reads its definitions.
-  nestedTreeAt =
-    m: site:
+  nestedTreeAt = nestedTreeAtWith knotRootPositioned;
+  # THE SAME CHILD, OBSERVED (den-hoag-t5ndo 2b): the bridge child on a knot that also serves the survivors
+  # observation (`survivorsOf`) on its record. Only `interface.nestedEvaluation` reads it, at the site the
+  # record's own fold selected; every other evaluation is built on a knot whose `exposes` is false and pays nothing.
+  observedTreeAt = nestedTreeAtWith knotRootObserved;
+  nestedTreeAtWith =
+    knot: m: site:
     # the bridge's child carries how many of its modules are the site's definitions on its own knot, read only
     # where its `_module.args` record is: a field of the request would be paid by every evaluation
-    evalModuleTreeWith (knotRootPositioned // { seeds = length site.defs; }) m.carried m.inherited (
+    evalModuleTreeWith (knot // { seeds = length site.defs; }) m.carried m.inherited (
       {
         modules = site.nests.modules ++ map site.nests.entry site.defs;
         prefix = site.loc;
@@ -7714,6 +7720,44 @@ let
             i = if fi + k < nTop then fi + k else fi + k - nTop;
           in
           if fi < nTop && topPlain then top i "a:${toString i}" else anch (builtins.elemAt graph fi);
+      # THE SOURCE MEMBERSHIP OF A CLOSURE ENTRY (den-hoag-t5ndo 2b, OQ-F arm A): which of the evaluation's
+      # top-level modules the entry at closure index `fi` belongs to, read off the same kept graph the anchors
+      # read: an import belongs to the importer whose edge the closure KEPT (the first occurrence reached, the
+      # edge its `_file` is inherited along, `moduleClosure`), keyed or not, so a module two sources import is
+      # the one source's the evaluator's own dedup chose. `null` is the evaluation's own module set (`nOwn`
+      # leading top-level modules); `k` is the `k`-th of the seeds its caller handed it. The anchors themselves
+      # are never returned. Read only by `survivorsOf`.
+      membershipOf =
+        r:
+        let
+          flat = r._flat;
+          nFlat = length flat;
+          nTop = length r._modList;
+          inherit (r._own) nOwn;
+          k = length (r._root.nests.modules or [ ]);
+          graph =
+            let
+              graph0 = removal.closeKept flat (removal.rootOrder r._root (moduleTop r._callM r._modList).roots);
+            in
+            alignedGraph "the source membership" flat (
+              if length graph0 == length flat then
+                graph0
+              else
+                (a3.refinedGraph r._root flat r._callM r._modList).graph
+            );
+          topPlain =
+            !(removal.removes flat r._modList)
+            && all (e: nodeKeyOf e == null) (
+              prelude.genList (builtins.elemAt flat) (if nTop < nFlat then nTop else nFlat)
+            );
+          rootOf = g: if g.importer.key == "" then g else rootOf g.importer;
+          ofTop = i: if i < nOwn then null else i - nOwn;
+        in
+        fi:
+        if fi < nTop && topPlain then
+          ofTop (if fi + k < nTop then fi + k else fi + k - nTop)
+        else
+          ofTop (rootOf (builtins.elemAt graph fi)).i;
       # Each group's seed declaration addresses (den-hoag-8hlo3 U1), aligned with `definitions`, given
       # the tree's module anchors (`declAnchorOf`).
       nestedDeclAts =
@@ -7786,11 +7830,133 @@ let
         map (a: builtins.elemAt (builtins.elemAt groups a.def) (head a.at) ++ drop 2 a.at) p.address;
     in
     {
-      inherit addrsFor;
+      inherit addrsFor membershipOf;
       seedsOf =
         ra: self: id: p:
         seedsFrom ra self (scope.decodeNta id).host p;
     };
+  # THE SURVIVORS OBSERVATION (den-hoag-t5ndo 2b): `loc` (relative to the tree's prefix) → the definitions the
+  # evaluator's own fold read there, in its order, each with the source it belongs to (`definition`: the index of
+  # the caller's definition it came from, `null` for the tree's own module set). A declared leaf's are the fold's own
+  # input list (`typeDefs`), by identity, each paired with its source by the path-carrying twin of the same
+  # discharge, override and order passes (`addressedDefs`, as `declAtsOfGroup` addresses them). A freeform key's
+  # observability is the one its provenance record states (0g61j's `priorityState`, read, never re-derived), and its
+  # definitions the same twin over the very records that record's priority replays. Lazy per `loc`: a read walks
+  # only `loc`'s levels and that leaf's definitions.
+  survivorsOf =
+    r:
+    let
+      member = seedDeclAts.membershipOf r;
+      inputs = r._nested.inputs;
+      realized = r.optionDefs.realized;
+      nFlat = length r._flat;
+      ofMod = mi: if mi >= nFlat then null else member (nFlat - 1 - mi);
+      refuse = loc: why: throw "gen-merge: survivors: `${showOption (inputs.prefix ++ loc)}' ${why}";
+      walk =
+        lvl: loc:
+        let
+          k = head loc;
+          rest = tail loc;
+        in
+        if !(lvl.declaredPairs ? ${k}) then
+          null
+        else
+          let
+            x = lvl.declaredPairs.${k};
+          in
+          if x ? group then
+            (if rest == [ ] then "group" else walk x.m rest)
+          else if rest != [ ] then
+            "inside"
+          else
+            {
+              opt = lvl.opts.${k};
+              defs = lvl.subDefs k;
+              inherit (x.m) typeDefs;
+            };
+      declared =
+        loc: l:
+        let
+          ss = inputs.sitesAt (inputs.prefix ++ loc);
+          dflt = if ss == [ ] then null else member (prelude.last ss).idx;
+          srcs = map (d: head d.at) (
+            addressedDefs (
+              map (d: d // { at = [ (if d ? modIndex then ofMod d.modIndex else dflt) ]; }) (
+                inputs.normalize (withDeclaredDefault l.opt l.defs)
+              )
+            )
+          );
+          n = length l.typeDefs;
+        in
+        if length srcs != n then
+          refuse loc "invariant: the twin of its fold selected ${toString (length srcs)} definitions where the fold read ${toString n}; this is a gen-merge defect"
+        else
+          {
+            state = if n == 0 then "noDefinition" else "observed";
+            definitions = prelude.genList (
+              i: builtins.elemAt l.typeDefs i // { definition = builtins.elemAt srcs i; }
+            ) n;
+          };
+      ffWalk =
+        node: loc:
+        if loc == [ ] then
+          node
+        else if node ? ${head loc} then
+          ffWalk node.${head loc} (tail loc)
+        else if node ? priorityState then
+          "inside"
+        else
+          null;
+      freeformAt =
+        loc:
+        let
+          p = ffWalk r.freeformProv loc;
+        in
+        if p == null then
+          {
+            state = "noDefinition";
+            definitions = [ ];
+          }
+        else if p == "inside" || !(p ? priorityState) || p.priorityState == "unobservable" then
+          { state = "unobservable"; }
+        else if p.priorityState == "noDefinition" then
+          {
+            state = "noDefinition";
+            definitions = [ ];
+          }
+        else
+          {
+            state = "observed";
+            definitions = map (d: {
+              inherit (d) file value;
+              definition = head d.at;
+            }) (
+              addressedDefs (
+                map (u: {
+                  inherit (u) file value;
+                  at = [ (ofMod u.modIndex) ];
+                }) (filter (u: u.path == loc) realized.unmatched)
+              )
+            );
+          };
+    in
+    loc:
+    if !(builtins.isList loc) || loc == [ ] then
+      throw "gen-merge: survivors: a location is a non-empty list of attribute names"
+    else if head loc == "_module" then
+      refuse loc "is the engine's own `_module' group, which no caller composes"
+    else
+      let
+        l = walk realized loc;
+      in
+      if l == "group" then
+        refuse loc "is a declared option group; its leaves each have their own"
+      else if l == "inside" then
+        { state = "unobservable"; }
+      else if l != null then
+        declared loc l
+      else
+        freeformAt loc;
   childTree =
     ra: self: id:
     let
@@ -7980,10 +8146,20 @@ let
     partial = false;
     mints = true;
     exposes = true;
+    expose = result: { inherit (result) _evaluation; };
     inner = false;
     positioned = false;
     closed = false;
     drive = driveKnotMinting true;
+  };
+  # The export bridge's positioned root, serving the survivors observation (`observedTreeAt`). Its drive is the
+  # root's own, so the evaluation is the bridge child's; it differs only in what its served record carries.
+  knotRootObserved = knotRootPositioned // {
+    exposes = true;
+    expose = result: {
+      # a definition VALUE, so read through the refusal the exported `config` carries, as `optionDefs` is
+      _survivors = builtins.seq result.identityHeld (builtins.seq result.config (survivorsOf result));
+    };
   };
 
   # ── evalModuleTree — one call = one `evalModules`, one knot on the one evaluator ──────
@@ -10671,7 +10847,7 @@ let
         #     evaluates its own nested trees, whose records are the evaluated ones (`serveOptions`).
         type = typeOver result;
       }
-      // (if knot.exposes then { inherit (result) _evaluation; } else { });
+      // (if knot.exposes then knot.expose result else { });
   # The published door's engine: a ROOT evaluation, which mints its nested positions.
   evalModuleTreeUnchecked = evalModuleTreeWith knotRoot true false;
   # The same, with the gen-scope evaluation on the result as `_evaluation` (this library's suites).
@@ -10822,6 +10998,7 @@ in
     # The nested tree's door and the engine's threaded twin (den-hoag-n6dh7 items 4, 5, 7): the
     # containers in `./types.nix` fold each element through the twin, and the suites read the door.
     nestedTreeAt
+    observedTreeAt
     emptyTreeAt
     mergeDefsThreaded
     mergeDefsThreadedPartial
