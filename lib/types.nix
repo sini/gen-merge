@@ -571,7 +571,7 @@ let
                 deriveTypeCore (
                   if
                     base ? typeMergeRel
-                    && (base ? _checkWitness && base ? check && base.check != base._checkWitness)
+                    && (base ? _checkWitness && base ? check && !(interface.ownCheck base))
                     && !(
                       builtins.isFunction (base.__typeSelf or null) && interface.departsOnlyOutside { check = null; } base
                     )
@@ -1189,6 +1189,7 @@ let
                 else
                   throw (refusedArgsRefusal "`withArgs'" (refusedArgsHit refusedKeys a));
               inherit admits nests;
+              __checkMark = "gen-merge:isModuleValue";
               # With no surviving definition the value is the module set evaluated over NO definitions, as
               # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
               # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
@@ -1447,6 +1448,7 @@ let
                 else
                   throw (refusedArgsRefusal "`withArgs'" (refusedArgsHit refusedKeys a));
               inherit admits nests;
+              __checkMark = "gen-merge:isModuleValue";
               # With no surviving definition the value is the module set evaluated over NO definitions, as
               # nixpkgs `submoduleWith`'s `emptyValue.value = base.config`: `base` is evaluated at no prefix
               # with the documentation placeholder as `name` (`namePlaceholder`), so its defaults read as they
@@ -1895,7 +1897,7 @@ let
           tyName == "attrsOf"
           && interface.isNesting element
           && !(element ? verify)
-          && !(element ? _checkWitness && element ? check && element.check != element._checkWitness)
+          && !(element ? _checkWitness && element ? check && !(interface.ownCheck element))
           # a nesting fold that is not the one its record was completed with folds by the engine's element path, which
           # owes the record's check (`modules.nix` `threadedAs`)
           && element.mergeDefs == (element.mergeDefs.completed.mergeDefs or null)
@@ -2308,13 +2310,13 @@ let
       # stated beside it is domain too (den-hoag-zdp46)
       t.verify v == null
       && (!(t ? admits) || t.admits v)
-      && (!(t ? _checkWitness && t ? check) || t.check == t._checkWitness || interface.admitsCarried t v)
+      && (!(t ? _checkWitness && t ? check) || interface.ownCheck t || interface.admitsCarried t v)
       # a `check` on a record carrying no witness is a foreign one, and its fold applies it (`modules.nix` `ownFold`,
       # den-hoag-w68ud); a leaf's curried one rides beside its completion stamp
       && (t ? _checkWitness || !(t ? check) || t ? __typeSelf || t.check v)
     else if t ? admits then
       t.admits v
-      && (!(t ? _checkWitness && t ? check) || t.check == t._checkWitness || interface.admitsCarried t v)
+      && (!(t ? _checkWitness && t ? check) || interface.ownCheck t || interface.admitsCarried t v)
       && (t ? _checkWitness || !(t ? check) || t.check v)
     else
       let
@@ -2835,7 +2837,7 @@ let
       length rawDefs == 1
       && type ? typeMergeRel
       && !(type ? admits || type ? verify || type ? split || type ? nests || type ? mergeDefs.headJudge)
-      && !(type ? _checkWitness && type ? check && type.check != type._checkWitness)
+      && !(type ? _checkWitness && type ? check && !(interface.ownCheck type))
     then
       null
     else
@@ -3049,7 +3051,7 @@ in
             defineType (
               interface.keepStamp (
                 if
-                  (t ? _checkWitness && t ? check && t.check != t._checkWitness)
+                  (t ? _checkWitness && t ? check && !(interface.ownCheck t))
                   && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
                 then
                   (s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t)
@@ -3068,7 +3070,7 @@ in
     # `interface.rebuildClosed.root` states `t`'s own check per definition and that `verify` on the merged value
     # instead (den-hoag-5f99v)
     else if
-      (t ? _checkWitness && t ? check && t.check != t._checkWitness)
+      (t ? _checkWitness && t ? check && !(interface.ownCheck t))
       && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
     then
       defineType (interface.keepStamp (interface.rebuildClosed.own t t))
@@ -3127,7 +3129,7 @@ in
               mkOptionType (
                 if
                   t ? typeMergeRel
-                  && (t ? _checkWitness && t ? check && t.check != t._checkWitness)
+                  && (t ? _checkWitness && t ? check && !(interface.ownCheck t))
                   && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
                 then
                   (s: interface.rebuildClosed.own s s) (interface.rebuildClosed.stated t)
@@ -3140,7 +3142,7 @@ in
     # a gen record whose check a caller rewrote since its completion is closed over it first, as `defineType` closes one
     else if
       t ? typeMergeRel
-      && (t ? _checkWitness && t ? check && t.check != t._checkWitness)
+      && (t ? _checkWitness && t ? check && !(interface.ownCheck t))
       && !(builtins.isFunction (t.__typeSelf or null) && interface.departsOnlyOutside { check = null; } t)
     then
       mkOptionType (interface.rebuildClosed.own t t)

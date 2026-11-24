@@ -4518,7 +4518,7 @@ let
         type ? _checkWitness
         && type ? check
         && (
-          type.check != type._checkWitness
+          !(interface.ownCheck type)
           ||
             (type ? split || type ? choose)
             && !(type ? verify)
@@ -4664,7 +4664,7 @@ let
           && !(
             type ? _checkWitness
             && (
-              type.check != type._checkWitness
+              !(interface.ownCheck type)
               || type ? split
               || type ? choose
               ||
@@ -4801,7 +4801,7 @@ let
       && !(
         type ? _checkWitness
         && (
-          type.check != type._checkWitness
+          !(interface.ownCheck type)
           || type ? split
           || type ? choose
           ||
@@ -5037,7 +5037,7 @@ let
           && !(
             type ? _checkWitness
             && (
-              type.check != type._checkWitness
+              !(interface.ownCheck type)
               || type ? split
               || type ? choose
               ||
@@ -5686,7 +5686,7 @@ let
             type ? _checkWitness
             && type ? check
             && (
-              type.check != type._checkWitness
+              !(interface.ownCheck type)
               ||
                 (type ? split || type ? choose)
                 && !(type ? verify)

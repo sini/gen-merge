@@ -88,7 +88,19 @@ let
   # (i)), and every site here keeps the meaning it had, a functor read as an attrset. No site here
   # decides the function-ness of a definition or a default, so none takes nixpkgs' reading.
   inherit (builtins) isFunction;
-  inherit (types) rewritesCheck witnessRecord;
+  inherit (types) witnessRecord;
+  # THE CHECK'S OWN-NESS, DECIDED BY DATA. A published check record carries `__checkMark`, the datum its
+  # constructor states for its predicate; two marks decide by value identity, so no function is compared. A check
+  # with no mark on either side is the sealed limb's (ADR-0034): the reified value under `==`.
+  ownCheck =
+    t:
+    if
+      isAttrs t.check && t.check ? __checkMark && isAttrs t._checkWitness && t._checkWitness ? __checkMark
+    then
+      t.check.__checkMark == t._checkWitness.__checkMark
+    else
+      t.check == t._checkWitness;
+  rewritesCheck = t: t ? _checkWitness && t ? check && !(ownCheck t);
 
   # THE THREAD MARKER (den-hoag-threadedforeign-substsubmodules-abort-srpix): what `threadedForeign`
   # hands a foreign `substSubModules`. nixpkgs types that argument as a module list, built as
@@ -867,7 +879,7 @@ let
       t ? _checkWitness
       && t ? check
       && (
-        t.check != t._checkWitness
+        !(ownCheck t)
         ||
           (t ? split || t ? choose)
           && !(t ? verify)
@@ -1154,7 +1166,7 @@ let
       t ? __meetJoin
       && t.__meetJoin ? verify
       && t.__meetJoin ? _checkWitness
-      && t.__meetJoin.check == t.__meetJoin._checkWitness
+      && ownCheck t.__meetJoin
       && t.__meetJoin.verify (head bad).value != null
     then
       throw "gen-merge: a definition for option `${showOption loc}' is not of the expected type: ${t.__meetJoin.verify (head bad).value}"
@@ -2619,11 +2631,9 @@ let
         else
           e
           // {
-            check =
-              witnessRecord (if e ? _checkWitness && e.check == e._checkWitness then copyDomain e else e.check)
-              // {
-                isV2MergeCoherent = true;
-              };
+            check = witnessRecord (if e ? _checkWitness && ownCheck e then copyDomain e else e.check) // {
+              isV2MergeCoherent = true;
+            };
           }
           // (
             if e ? merge.v2 then
@@ -3973,7 +3983,7 @@ let
         # `metWith`'s `__stockCheck` judges a stock (`joined`); a base of no recognised name keeps its own membership
         params =
           isAttrs b
-          && !(b ? _checkWitness && b.check == b._checkWitness)
+          && !(b ? _checkWitness && ownCheck b)
           && !(isV2 b)
           && (b.getSubModules or null) == null
           && ((t.functor or { }).payload or null) ? elemType;
@@ -4264,8 +4274,7 @@ let
             r
             // {
               check = projection;
-              ${if own == r._checkWitness || r.check == r._checkWitness then "_checkWitness" else null} =
-                projection;
+              ${if own == r._checkWitness || ownCheck r then "_checkWitness" else null} = projection;
               merge = rebuildClosed.verifiedMerge r.verify (
                 if base ? v2 then base else rebuildClosed.verifiedMerge.lifted own base
               );
@@ -6800,7 +6809,7 @@ let
         in
         if !(o ? verify) || !(o ? typeMergeRel) || replacesVerify o then
           c
-        else if o ? _checkWitness && o.check == o._checkWitness then
+        else if o ? _checkWitness && ownCheck o then
           (v: o.verify v == null)
         else
           (v: c v && o.verify v == null);
@@ -6824,11 +6833,7 @@ let
       o1 = head os;
       ov =
         if
-          o1 ? verify
-          && !(o1 ? __stockCheck)
-          && o1 ? _checkWitness
-          && o1.check == o1._checkWitness
-          && !(replacesVerify o1)
+          o1 ? verify && !(o1 ? __stockCheck) && o1 ? _checkWitness && ownCheck o1 && !(replacesVerify o1)
         then
           o1.verify
         else
@@ -7145,7 +7150,7 @@ let
                   && (((o._checkWitness or null) == (m._checkWitness or null)) || (m.functor.payload or null) != null)
               )
               || !(m ? typeMergeRel)
-              || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
+              || (o ? _checkWitness && o ? check && !(ownCheck o))
               || replacesVerify o
               || o ? holds
             );
@@ -7578,7 +7583,7 @@ let
           d =
             if !(o ? verify) || !(o ? typeMergeRel) || replacesVerify o then
               c
-            else if o ? _checkWitness && o.check == o._checkWitness then
+            else if o ? _checkWitness && ownCheck o then
               (v: o.verify v == null)
             else
               (v: c v && o.verify v == null);
@@ -7604,7 +7609,7 @@ let
           || o ? holds
           || replacesVerify o
           || rewritesCheck o
-          || (o ? _checkWitness && o ? check && o.check != o._checkWitness)
+          || (o ? _checkWitness && o ? check && !(ownCheck o))
         then
           "mkBefore"
         else if !(o ? typeMergeRel) then
@@ -8033,7 +8038,7 @@ let
             __stockCheck =
               if
                 ((m.functor or { }).payload or null) ? elemType
-                && !(s ? _checkWitness && s.check == s._checkWitness)
+                && !(s ? _checkWitness && ownCheck s)
                 && (!(isV2 s) || s.check.isV2MergeCoherent or false)
                 && (s.getSubModules or null) == null
               then
@@ -8733,7 +8738,7 @@ let
   # alone where its `check` is still its completion's witness, and both where it rewrote its `check`.
   copyDomain =
     x:
-    if x ? _checkWitness && x.check == x._checkWitness then
+    if x ? _checkWitness && ownCheck x then
       (v: x.verify v == null)
     else
       (v: x.check v && x.verify v == null);
@@ -9419,7 +9424,7 @@ let
       # record arriving as a witnessed rewrite publishes its own `check` and its stale `_checkWitness`
       # unchanged, so every identity reader and the meet read the copy as they read the raw record.
       check =
-        if t ? _checkWitness && t.check != t._checkWitness then
+        if t ? _checkWitness && !(ownCheck t) then
           t.check
         else
           witnessRecord (
@@ -9434,6 +9439,9 @@ let
           )
           // {
             isV2MergeCoherent = true;
+            # the constructor's statement of its predicate, decided at the declaration (ADR-0034's regimes); a
+            # constructor stating none publishes no mark, and its check is read as the sealed limb reads one
+            ${if t ? __checkMark then "__checkMark" else null} = t.__checkMark;
           };
       # The rebuild, built once by the same `witnessRecord` and published twice, as `substSubModules`
       # and as `_substSubModulesWitness`.
@@ -9550,7 +9558,7 @@ let
       # the export completes the record, so it re-ties the stamp the import tied; a demoted copy keeps
       # its stale witness (`restamp`). Lazy for the reason `restamp` is, and a key of the one attrset
       # below rather than a `//` layer of its own (a null name adds no attribute).
-      exported = t // {
+      exported = (if t ? __checkMark then builtins.removeAttrs t [ "__checkMark" ] else t) // {
         ${if t ? __typeSelf then "__typeSelf" else null} =
           if t.__staleStamp or false || (t.__mint or null) == copyMint then t.__typeSelf else (_: exported);
         ${if t ? __typeSelf then "__stampReads" else null} = stampReads;
@@ -9581,7 +9589,7 @@ let
         # A witnessed rewrite keeps its own stale witness (C1): the name is decided at construction, so
         # `t`'s binding survives the `//` and no per-export thunk is allocated for the choice.
         inherit check;
-        ${if t ? _checkWitness && t.check != t._checkWitness then null else "_checkWitness"} = check;
+        ${if t ? _checkWitness && !(ownCheck t) then null else "_checkWitness"} = check;
         # Through the bridge where the fold carries the sibling (den-hoag-n6dh7 item 7, OQ11 (d)):
         # a nesting type's tree is one root evaluation, and a gen container threads the bridge to
         # each element through its one `split`, so the forward mount keeps working without a third
@@ -9849,6 +9857,7 @@ in
     importedWrapped
     isOptionType
     rewritesCheck
+    ownCheck
     stampOk
     keepStamp
     carriedCopy
