@@ -804,8 +804,10 @@ in
   verifyValue = type: value: strategies.verifyValue type value;
 
   # The nested evaluation a nesting type's exported `merge` makes over `defs` at `loc`, returned as
-  # `{ config; provenance; }` (den-hoag-t5ndo): the same child, so the caller retains what the value path
-  # computed instead of evaluating the tree a second time. A lambda, as `verifyValue` is.
+  # `{ config; provenance; }` (den-hoag-t5ndo): the same child, so a caller reading BOTH projections from this
+  # one result pays one evaluation for the two. It shares nothing with a read of the typed option itself: a caller
+  # that also reads the option's value through the module system evaluates the tree twice. A lambda, as
+  # `verifyValue` is.
   evalNested =
     type: loc: defs:
     core.interface.nestedEvaluation type loc defs;

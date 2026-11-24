@@ -327,7 +327,7 @@
           grep -q 'infinite recursion encountered' "$TMPDIR/err" || die undeclared-gen-diverges "death is not the infinite-recursion channel"
           endblk; fi
 
-          if sel engine-option-names; then blk engine-option-names 12
+          if sel engine-option-names; then blk engine-option-names 15
           # den-hoag-jbddy: the engine's option names cost no evaluation; its control, the same names
           # read off `getSubOptions`, evaluates, and both print one record.
           names='{ freeformSubmodule = [ "_freeformOptions" "_module" ]; submodule = [ "_module" ]; }'
@@ -362,6 +362,20 @@
           [ "$val" = "1" ] || die one-eval-verify-shared "expected value 1, got '$val'"
           n=$(traced)
           [ "$n" = "1" ] || die one-eval-verify-shared "expected 1 evaluation, the spy counted $n"
+          # den-hoag-t5ndo G3: the route's config and provenance are one evaluation in both read orders; the route
+          # beside the typed read is two, the scope of the one-evaluation claim.
+          for arm in nested-route-config-then-provenance nested-route-provenance-then-config; do
+            evalArm "$arm"
+            [ "$rc" -eq 0 ] || die "$arm" "expected exit 0, got $rc"
+            [ "$val" = "2" ] || die "$arm" "expected value 2, got '$val'"
+            n=$(traced)
+            [ "$n" = "1" ] || die "$arm" "expected 1 evaluation, the spy counted $n"
+          done
+          evalArm nested-route-and-typed-read
+          [ "$rc" -eq 0 ] || die nested-route-and-typed-read "expected exit 0, got $rc"
+          [ "$val" = "4" ] || die nested-route-and-typed-read "expected value 4, got '$val'"
+          n=$(traced)
+          [ "$n" = "2" ] || die nested-route-and-typed-read "expected 2 evaluations, the spy counted $n"
           evalArm one-eval-control-two-roots
           [ "$rc" -eq 0 ] || die one-eval-control-two-roots "expected exit 0, got $rc"
           [ "$val" = "3" ] || die one-eval-control-two-roots "expected value 3, got '$val'"
@@ -680,12 +694,12 @@
           # 0/0 is a false pass: the runner must have executed every cell above.
           if [ "$tpsel_partial" = 0 ]; then
             [ "$tpsel_blkSeen" = "$(echo $cellBlocks | wc -w)" ] || die runner "ran $tpsel_blkSeen cell blocks, want $(echo $cellBlocks | wc -w)"
-            [ "$ran" = "92" ] || die runner "expected 92 evaluations, ran $ran"
-            echo "tests-process: 92 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+            [ "$ran" = "95" ] || die runner "expected 95 evaluations, ran $ran"
+            echo "tests-process: 95 cells, every exit read unpiped, every death on its named channel, every count read" > $out
           else
             [ "$ran" = "$tpsel_blkWant" ] || die runner "the selected blocks declare $tpsel_blkWant evaluations, ran $ran"
             [ "$(echo $tpsel_picked | wc -w)" = "$tpsel_n" ] && [ -n "$tpsel_picked" ] || die runner "selected $tpsel_n blocks ($tpsel_selected), ran:''${tpsel_picked:- none}"
-            echo "tests-process: PARTIAL — $ran of 92 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
+            echo "tests-process: PARTIAL — $ran of 95 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
           fi
         ''
         + ''

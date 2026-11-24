@@ -5953,16 +5953,21 @@ let
 
   # THE BRIDGE CHILD, RETAINED (den-hoag-t5ndo 1b): the one root evaluation a nesting type's exported `merge`
   # makes over `defs` at `loc` (`bridged` → its `threaded` fold → `exportBridge.child`), returned whole to the
-  # caller rather than as its `config` alone. Built from the record the fold was completed with
-  # (`mergeDefs.completed`), so the module set, arguments and domain are the ones the exported fold closed over,
-  # and refused by name where the type's `merge` is not that fold: a record that is not nesting (a leaf, a
-  # container, gen-schema's `refined` copy, which keeps `nests` and loses the sibling), a fold taken by `//`, a
-  # `merge` or `check` rewritten over the export.
+  # caller rather than as its `config` alone. The child is taken THROUGH the record's own fold: `threaded` over
+  # the export's accessor whose `child` answers the whole record under `config`, so the route makes the fold's
+  # own call and cannot serve a child that fold does not make. It is the export's call, so the accessor is
+  # `exportBridge`'s (`rootRebuilds = false` is the export's own statement, not one inherited by accident).
+  # Refused by name where the type's `merge` is not that fold: a record that is not nesting (a leaf, a container,
+  # gen-schema's `refined` copy, which keeps `nests` and loses the sibling), a fold or a tree that is not the one
+  # its completion states, and a `merge` or `check` rewritten over the export. The `merge` witness compares the
+  # slot by pointer, as 2632d's guards compare `admits`: every instance type's `merge` sits at one source
+  # position, so a position witness passes a `merge` carried from another record. A record forging its own
+  # completion (`completed` pointing at itself) passes every witness, and is served its own fold's child, which
+  # is what its exported `merge` serves.
   nestedEvaluation =
     t: loc: defs:
     let
       c = t.mergeDefs.completed or null;
-      at = builtins.${"unsafeGetAttrPos"};
       refuse =
         why:
         throw "gen-merge: evalNested: the option type `${nameOf t}' at `${showOption loc}' ${why}, so there is no nested evaluation its `merge' makes to return";
@@ -5973,7 +5978,10 @@ let
     # completion with it: the tree the completion states must be the one this record states
     else if !(isAttrs c) || t.mergeDefs != c.mergeDefs || t.nests != c.nests then
       refuse "folds by a fold that is not the one its record was completed with"
-    else if at "merge" t != at "merge" c || rewritesCheck t then
+    else if
+      builtins.intersectAttrs { merge = null; } t != builtins.intersectAttrs { merge = null; } c
+      || rewritesCheck t
+    then
       refuse "has a `merge' or `check' rewritten over its export"
     else if !(all (d: c.admits d.value) defs) then
       throw "gen-merge: option `${showOption loc}' has definitions `${nameOf c}' cannot consume (${
@@ -5981,11 +5989,9 @@ let
       })"
     else
       let
-        r = exportBridge.child {
-          position = [ ];
-          inherit (c) nests;
-          inherit loc defs;
-        };
+        r = t.mergeDefs.threaded (
+          exportBridge // { child = site: { config = exportBridge.child site; }; }
+        ) loc defs;
       in
       {
         inherit (r) config provenance;

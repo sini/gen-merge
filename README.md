@@ -474,6 +474,18 @@ Declared records win over freeform at shared paths (mirroring config's `recursiv
 `.type.merge`) surfaces its `.config` only — the inner tree's provenance is not threaded out through
 the nested merge.
 
+A caller that holds the definitions can retain that child instead: `evalNested type loc defs` returns
+`{ config; provenance; }` of the one evaluation the type's exported `merge` makes over `defs` at `loc`, taken
+through the type's own fold, so `config` is the value `type.merge loc defs` serves and a refusal reads in the value
+path's own words. Reading both projections from that result is one evaluation; it shares nothing with a read of the
+typed option itself, so a caller that also reads the option's value evaluates the tree twice. It refuses, by name, a
+type that is not a gen nesting type (a leaf, a container, a foreign `submodule`'s join) and a record whose `merge` is
+not the fold it was completed with (a `merge`, `check`, fold or tree carried or rewritten by `//`). The route sees only
+the definitions it is handed: under nixpkgs' `attrsOf` an element's merge receives them after nixpkgs' per-key
+property push-down, and a caller must hand the same list. It is cold (no warm reuse) and returns the root child's
+provenance, one nested level, as above. A record forging its own completion (`completed` pointing at itself) is served
+its own fold's child, which is what its exported `merge` serves.
+
 ## Undeclared definitions
 
 An unmatched definition — a config key with no matching declaration — has three dispositions and no

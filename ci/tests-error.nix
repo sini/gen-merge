@@ -13864,6 +13864,133 @@ in
         };
       };
 
+    # ── THE BRIDGE CHILD, RETAINED: `evalNested`'s refusals, by text (den-hoag-t5ndo 1b) ─────────────────────
+    # The route makes the exported fold's own call, so a refusal that fold makes reads in the value path's own words
+    # and stratum (G2: a type-own module reading `name` while declaring; G5: a definition outside the domain), the
+    # typed read and the route held to one text. A record whose `merge' is not its completion's fold is refused by
+    # name (G4): not nesting, a fold or tree not its completion's, a `merge' slot or a `check' rewritten over the
+    # export (F5: a `merge' slot carried by `//` from a sibling, which a source-position witness passed). The value
+    # cells are `ci/tests/nested-evaluation.nix`. Red at gen-merge main 38dff3c: `evalNested` is absent.
+    flake.testsError.nested-evaluation =
+      let
+        inst =
+          mods:
+          gm.refusingSubmodule null [ "config" "options" "prefix" ] (
+            [
+              {
+                config._module.freeformType = t.attrsOf t.anything;
+                options.shell = gm.mkOption {
+                  type = t.str;
+                  default = "bash";
+                };
+              }
+            ]
+            ++ mods
+          );
+        userType = inst [ ];
+        siblingType = inst [
+          {
+            options.o9 = gm.mkOption {
+              type = t.int;
+              default = 9;
+            };
+          }
+        ];
+        nameType = inst [
+          (
+            { name, ... }:
+            {
+              options."${name}-marker" = gm.mkOption {
+                type = t.bool;
+                default = true;
+              };
+            }
+          )
+        ];
+        loc = [
+          "users"
+          "tux"
+        ];
+        one = [
+          {
+            file = "reg.nix";
+            value.shell = "zsh";
+          }
+        ];
+        bad = [
+          {
+            file = "bad.nix";
+            value = 5;
+          }
+        ];
+        route = ty: ds: (gm.evalNested ty loc ds).config;
+      in
+      {
+        test-g2-stratum-refusal-typed = {
+          expr = force ((nameType.merge loc one).tux-marker);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a module read the module argument `name' while its own declarations were being folded, and the declaration stratum does not consume the value stratum's output \\(nothing consumes its own stratum's in-flight output, so the option key set is unconditional\\)\\. Declare the option unconditionally and gate its `config' instead, or compose the modules before evaluation rather than through `imports = \\[ config\\.… \\]'$";
+          };
+        };
+        test-g2-stratum-refusal-route = {
+          expr = force ((route nameType one).tux-marker);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: a module read the module argument `name' while its own declarations were being folded, and the declaration stratum does not consume the value stratum's output \\(nothing consumes its own stratum's in-flight output, so the option key set is unconditional\\)\\. Declare the option unconditionally and gate its `config' instead, or compose the modules before evaluation rather than through `imports = \\[ config\\.… \\]'$";
+          };
+        };
+        test-g5-domain-refusal-typed = {
+          expr = force ((userType.merge loc bad).shell);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `users\\.tux' has definitions `submodule' cannot consume \\(bad\\.nix\\)$";
+          };
+        };
+        test-g5-domain-refusal-route = {
+          expr = force ((route userType bad).shell);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `users\\.tux' has definitions `submodule' cannot consume \\(bad\\.nix\\)$";
+          };
+        };
+        test-g4-not-nesting-refused = {
+          expr = force (route t.str one);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: evalNested: the option type `string' at `users\\.tux' is not a gen nesting type \\(it states no nested tree with its threaded fold\\), so there is no nested evaluation its `merge' makes to return$";
+          };
+        };
+        test-g4-fold-from-sibling-refused = {
+          expr = force (route (userType // { inherit (siblingType) mergeDefs; }) one);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' folds by a fold that is not the one its record was completed with, so there is no nested evaluation its `merge' makes to return$";
+          };
+        };
+        test-g4-merge-rewritten-refused = {
+          expr = force (route (userType // { merge = _: _: { }; }) one);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' has a `merge' or `check' rewritten over its export, so there is no nested evaluation its `merge' makes to return$";
+          };
+        };
+        test-g4-merge-slot-from-sibling-refused = {
+          expr = force (route (userType // builtins.intersectAttrs { merge = null; } siblingType) one);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' has a `merge' or `check' rewritten over its export, so there is no nested evaluation its `merge' makes to return$";
+          };
+        };
+        test-g4-check-rewritten-refused = {
+          expr = force (route (userType // { check = _: true; }) one);
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: evalNested: the option type `submodule' at `users\\.tux' has a `merge' or `check' rewritten over its export, so there is no nested evaluation its `merge' makes to return$";
+          };
+        };
+      };
+
     # ── den-hoag-58bib β: `refusingSubmodule` states only a base module argument the evaluation supplies ──
     # A key outside `baseArgNames` (lib/modules.nix) is no argument any evaluation of the type supplies, so a
     # refusal of it would give a false reason and refuse a value nixpkgs serves. Refused at construction, by

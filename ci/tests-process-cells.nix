@@ -699,6 +699,46 @@ let
         { config.o.x = 1; }
         { config.o = { }; }
       ]).config.o.x;
+    # den-hoag-t5ndo G3: `evalNested`'s two projections are one evaluation, in either read order (each reads 1). A
+    # caller that also reads the typed value evaluates the tree again (2): the route shares nothing with the
+    # option's own fold, so "one evaluation" holds only for a caller reading both projections from the route.
+    nested-route-config-then-provenance =
+      let
+        r =
+          spied.evalNested sub
+            [ "s" ]
+            [
+              {
+                file = "d.nix";
+                value.x = 2;
+              }
+            ];
+      in
+      builtins.seq r.config.x (builtins.length r.provenance.x.winners);
+    nested-route-provenance-then-config =
+      let
+        r =
+          spied.evalNested sub
+            [ "s" ]
+            [
+              {
+                file = "d.nix";
+                value.x = 2;
+              }
+            ];
+      in
+      builtins.seq (builtins.length r.provenance.x.winners) r.config.x;
+    nested-route-and-typed-read =
+      (spied.evalNested sub
+        [ "s" ]
+        [
+          {
+            file = "d.nix";
+            value.x = 2;
+          }
+        ]
+      ).config.x
+      + spiedAt sub [ { x = 2; } ];
     # The spy's live control: two root evaluations read 2.
     one-eval-control-two-roots = (spiedAt sub [ { x = 1; } ]).x + (spiedAt sub [ { x = 2; } ]).x;
     # den-hoag-8qenh (c′): an evaluation's own type's empty value is that evaluation's on-demand
