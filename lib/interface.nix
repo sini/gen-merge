@@ -1863,6 +1863,8 @@ let
           true
         else if t ? canNest then
           t.canNest
+        else if t ? nestNeed then
+          fuel <= 0 || t.nestNeed == null || fuel - 1 < t.nestNeed
         else
           let
             wrapped = declaredWrapped t;
@@ -1870,6 +1872,42 @@ let
           wrapped != [ ] && (fuel <= 0 || prelude.any (go (fuel - 1)) wrapped);
     in
     go importedTypeWalkFuel;
+
+  # `canNest`'s walk at `fuel`, answering the LEAST fuel at which it reads `false` (`null`: it reads `true` at every fuel
+  # up to `fuel`). `canNest`'s answer falls from `true` to `false` once, as its fuel grows (a fuel too small exhausts to
+  # `true`), so this one number is its answer at every fuel up to `fuel`: `true` exactly below it. The same arms in the
+  # same order, the same members in `declaredWrapped`'s order, and it stops where `any` stops (a member reading `true`
+  # at its fuel is a `null` here), so it forces what `canNest` at `fuel` forces. It reads no `nestNeed`: a record's
+  # threshold is built by a walk that reads none, so a self-referential type exhausts the fuel rather than re-entering
+  # the record it is building (den-hoag-5a9t4).
+  canNestNeed =
+    fuel: t:
+    if !(isAttrs t) then
+      0
+    else if isNesting t || t ? __threadedForeign then
+      null
+    else if t ? canNest then
+      (if t.canNest then null else 0)
+    else
+      let
+        wrapped = declaredWrapped t;
+        n = length wrapped;
+        scan =
+          i: m:
+          if i == n then
+            m + 1
+          else
+            let
+              x = canNestNeed (fuel - 1) (elemAt wrapped i);
+            in
+            if x == null then null else scan (i + 1) (if x > m then x else m);
+      in
+      if n == 0 then
+        0
+      else if fuel <= 0 then
+        null
+      else
+        scan 0 0;
 
   # Does this container's element chain end at a leaf? `canNest`'s `false`, read off the record by presence: each level
   # carries one element and states no other role and no nesting (`nests`, `__threadedForeign`), and the last element
@@ -9804,6 +9842,7 @@ in
     keyedUnderEmbedding
     moduleSetPayload
     canNest
+    canNestNeed
     chainEndsAtLeaf
     declaresNesting
     homedAt
