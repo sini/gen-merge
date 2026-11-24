@@ -7872,7 +7872,7 @@ let
             {
               opt = lvl.opts.${k};
               defs = lvl.subDefs k;
-              inherit (x.m) typeDefs;
+              inherit (x.m) typeDefs value;
             };
       declared =
         loc: l:
@@ -7891,7 +7891,8 @@ let
         if length srcs != n then
           refuse loc "invariant: the twin of its fold selected ${toString (length srcs)} definitions where the fold read ${toString n}; this is a gen-merge defect"
         else
-          {
+          # the leaf's own checked fold first: where its value refuses, so does this read, with that error
+          builtins.seq l.value {
             state = if n == 0 then "noDefinition" else "observed";
             definitions = prelude.genList (
               i: builtins.elemAt l.typeDefs i // { definition = builtins.elemAt srcs i; }
@@ -7925,7 +7926,7 @@ let
             definitions = [ ];
           }
         else
-          {
+          builtins.seq (builtins.foldl' (a: k: a.${k}) r.config loc) {
             state = "observed";
             definitions = map (d: {
               inherit (d) file value;
