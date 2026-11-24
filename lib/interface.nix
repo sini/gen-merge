@@ -5592,6 +5592,21 @@ let
           ) declared;
         in
         if e ? _checkWitness && rewritten != [ ] then checkedFold (head rewritten) fold else fold;
+      # The element as nixpkgs' fold reads it here. A gen element answers the rebuild with its export, built before
+      # any `//` its author wrote, so the record written at its position (the declared copy of `e`, matched as
+      # `carriedElement` matches one) states the fields that carry no check (`writtenSlice`) where the root keeps the
+      # record written (`ev.child ev` false, as `threadedAs`' `whenEmpty` asks), and the export's own where the
+      # fix-up rebuilds it. Slot by slot and unforced, so a fold that reads none pays nothing for it.
+      writtenAt =
+        ev: e:
+        e
+        // prelude.mapAttrs (
+          n: v:
+          let
+            ws = filter (d: isAttrs d && d ? _checkWitness && d._checkWitness == e._checkWitness) declared;
+          in
+          if !(e ? _checkWitness) || length ws != 1 || ev.child ev then v else (head ws).${n} or v
+        ) (builtins.intersectAttrs writtenSlice e);
       # The chain's threaded fold over the option's `loc` and `defs`, each element threaded under
       # `ev` at its steps below `base`, where `lv` (the level at `base`, `rB` the capture fold's
       # result there) placed it; any other element's nested-tree read refuses by name.
@@ -5765,7 +5780,7 @@ let
         checkedThreaded (importedFold (
           via (
             e:
-            genFace e
+            genFace (writtenAt ev e)
             // {
               # A threaded element folded at a step the split did not capture (a value the merge
               # returns, such as `functionTo`'s function body) keeps its fold, and its accessor's
@@ -8565,6 +8580,16 @@ let
   # answers for its base's verify only. One slice of each record, compared by the pointer of its slot as
   # `stampAgrees` compares one, so the answer is the same on every evaluator for a replaced verify.
   verifySlice = builtins.intersectAttrs { verify = null; };
+  # The fields nixpkgs' fold reads off a type that carry no check, kept from the record a re-mint replaces
+  # (`carriedAtDepth`'s `over`): `emptyValue` (`mergeDefinitions`, an option nothing defined) and
+  # `deprecationMessage` with the `name` its warning prints (`evalOptionValue`). A constructor's re-mint states its
+  # own `name`, which departs from the record's (`loaOf` is `attrsOf` under another name). Copied as slots, unforced.
+  # `getSubModules` is absent: a re-carried element's module set is the rebuild's.
+  writtenSlice = {
+    emptyValue = null;
+    deprecationMessage = null;
+    name = null;
+  };
   replacesVerify =
     t:
     t ? verify && !((t.__typeSelf or null) != null && verifySlice t == verifySlice (t.__typeSelf null));
@@ -8832,7 +8857,9 @@ let
     then
       (
         let
-          rehomed = homedAt "mkOptionType" null t;
+          # the fields that carry no check are kept as the descriptor states them (`writtenSlice`): the stock
+          # container's own fold replaces its merge, never what nixpkgs' fold reads off the record written
+          rehomed = homedAt "mkOptionType" null t // builtins.intersectAttrs writtenSlice t;
         in
         {
           imported = rehomed;
