@@ -5969,7 +5969,9 @@ let
     in
     if !(isAttrs t) || !(isNesting t) then
       refuse "is not a gen nesting type (it states no nested tree with its threaded fold)"
-    else if !(isAttrs c) || t.mergeDefs != c.mergeDefs then
+    # the completion is read off the fold, so a fold carried by `//` from another record brings that record's
+    # completion with it: the tree the completion states must be the one this record states
+    else if !(isAttrs c) || t.mergeDefs != c.mergeDefs || t.nests != c.nests then
       refuse "folds by a fold that is not the one its record was completed with"
     else if at "merge" t != at "merge" c || rewritesCheck t then
       refuse "has a `merge' or `check' rewritten over its export"
