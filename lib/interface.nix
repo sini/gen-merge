@@ -475,6 +475,10 @@ let
     # (den-hoag-stage3-rolesmet-nestedtypes-xr243). The module set decides each and the subject compares the set, so
     # only a `//` copy departing at them alone answers otherwise. The prefix is taken over the same record, so it
     # never probes them on the record compared; a module-set element nested in it is fenced by the prefix's closures.
+    # Its `emptyValue` is left out there too: the module set evaluated over no definitions, decided by the set the
+    # subject compares, and deep, so `==` over two evaluations of one set forces their options; outside
+    # `ownEvaluation`, whose fields a door's WHNF read forces, because `emptyValue`'s WHNF forces nothing
+    # (den-hoag-7fb0k).
     subject =
       v:
       let
@@ -484,7 +488,11 @@ let
           else
             builtins.removeAttrs v (
               if evaluatesOwnRoles v then
-                [ "description" ] ++ ownEvaluation
+                [
+                  "description"
+                  "emptyValue"
+                ]
+                ++ ownEvaluation
               else
                 [
                   "description"

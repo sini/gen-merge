@@ -127,7 +127,60 @@ let
       gL
       (gL // { unroledNested.x = gt.str; })
     ];
+    # the module set evaluated over no definitions is an output of that set too (den-hoag-7fb0k)
+    gGraftEmpty = [
+      gSub
+      (gSub // { emptyValue.value.a = 5; })
+    ];
+    npGraftEmpty = [
+      npSub
+      (npSub // { emptyValue.value.a = 5; })
+    ];
+    gLGraftEmpty = [
+      gL
+      (gL // { emptyValue.value.x = 5; })
+    ];
   };
+  # ── A REWRITTEN CHECK DECLARED THREE AND FOUR TIMES (den-hoag-7fb0k) ─────────────────────────────────────────
+  # One check-rewritten copy of gen's submodule declared N times: from N = 3 the accumulator's kept record and the
+  # next declaration hold two evaluations of one module set as their `emptyValue`, which one value no longer compares.
+  # Both spellings of the rewrite, with no container and below gen's `attrsOf`, on gen's engine, and on nixpkgs'
+  # engine below gen's `attrsOf`: a valid value is served, and on gen's engine the rewrite's check still refuses.
+  notTwo = v: !(v ? a && v.a == 2);
+  rSub = gt.submodule { options.a = gm.mkOption { type = gt.int; }; };
+  rewritten = {
+    functorOverride = rSub // {
+      check = rSub.check // {
+        __functor = _: v: rSub.check v && notTwo v;
+      };
+    };
+    npAddCheck = np.addCheck rSub notTwo;
+  };
+  declaredN =
+    eval: mk: wrap: def: n: r: val:
+    let
+      v = tryEval (
+        let
+          o =
+            (eval (builtins.genList (_: { options.o = mk { type = wrap r; }; }) n ++ [ { o = def val; } ]))
+            .config.o;
+        in
+        deepSeq o o
+      );
+    in
+    if v.success then v.value else "REFUSED";
+  onGen = declaredN (gm.evalModuleTree { }) gm.mkOption;
+  onNixpkgs = declaredN (modules: nl.evalModules { inherit modules; }) nl.mkOption;
+  readN =
+    val:
+    builtins.mapAttrs (_: r: {
+      bare3 = onGen (x: x) (x: x) 3 r val;
+      bare4 = onGen (x: x) (x: x) 4 r val;
+      keyed3 = onGen gt.attrsOf (x: { k = x; }) 3 r val;
+      keyed4 = onGen gt.attrsOf (x: { k = x; }) 4 r val;
+      nixpkgsKeyed3 = onNixpkgs gt.attrsOf (x: { k = x; }) 3 r val;
+      nixpkgsKeyed4 = onNixpkgs gt.attrsOf (x: { k = x; }) 4 r val;
+    }) rewritten;
   # a forged `//` copy of gen's submodule departing only in `nestedTypes`, declared beside its honest base
   forged = gSub // {
     nestedTypes.freeformType = gt.int;
@@ -199,7 +252,43 @@ in
         gGraftNested = true;
         gGraftUnroled = true;
         gLGraftUnroled = false;
+        gGraftEmpty = true;
+        npGraftEmpty = true;
+        gLGraftEmpty = false;
       };
+    };
+    # RED while one value compares `emptyValue`: "the option `a' is used but not defined", from N = 3
+    test-a-rewritten-check-declared-three-and-four-times-is-served = {
+      expr = readN { a = 1; };
+      expected = builtins.mapAttrs (_: _: {
+        bare3.a = 1;
+        bare4.a = 1;
+        keyed3.k.a = 1;
+        keyed4.k.a = 1;
+        nixpkgsKeyed3.k.a = 1;
+        nixpkgsKeyed4.k.a = 1;
+      }) rewritten;
+    };
+    # ... and on gen's engine the rewrite's check still refuses what it rejects
+    test-a-rewritten-check-declared-three-and-four-times-still-refuses = {
+      expr =
+        builtins.mapAttrs
+          (
+            _: x:
+            builtins.removeAttrs x [
+              "nixpkgsKeyed3"
+              "nixpkgsKeyed4"
+            ]
+          )
+          (readN {
+            a = 2;
+          });
+      expected = builtins.mapAttrs (_: _: {
+        bare3 = "REFUSED";
+        bare4 = "REFUSED";
+        keyed3 = "REFUSED";
+        keyed4 = "REFUSED";
+      }) rewritten;
     };
     # ★ THE STATED PRICE, pinned at the served surface: a forged copy and its honest base are one value, and in
     # either declaration order the merged type publishes the `nestedTypes` its module set decides and serves the
