@@ -5592,24 +5592,6 @@ let
           ) declared;
         in
         if e ? _checkWitness && rewritten != [ ] then checkedFold (head rewritten) fold else fold;
-      # The element as nixpkgs' fold reads it here. A gen element answers the rebuild with its export, built before
-      # any `//` its author wrote, and nixpkgs' fold reads one field off it, `emptyValue` (`mergeDefinitions`, a body
-      # nothing defined). Where the root keeps the record written (`ev.child ev` false, as `threadedAs`' `whenEmpty`
-      # asks), it is the record's declared at the element's position (the copy of `e`, matched as `carriedElement`
-      # matches one); where the fix-up rebuilds it, the export's own. Unforced until read.
-      writtenAt =
-        ev: e:
-        e
-        // {
-          emptyValue =
-            let
-              ws = filter (d: isAttrs d && d ? _checkWitness && d._checkWitness == e._checkWitness) declared;
-            in
-            if !(e ? _checkWitness) || length ws != 1 || ev.child ev then
-              e.emptyValue
-            else
-              (head ws).emptyValue or e.emptyValue;
-        };
       # The chain's threaded fold over the option's `loc` and `defs`, each element threaded under
       # `ev` at its steps below `base`, where `lv` (the level at `base`, `rB` the capture fold's
       # result there) placed it; any other element's nested-tree read refuses by name.
@@ -5783,8 +5765,21 @@ let
         checkedThreaded (importedFold (
           via (
             e:
-            genFace (writtenAt ev e)
+            genFace e
             // {
+              # The empty value nixpkgs' fold reads off the element it is handed (`mergeDefinitions`, a body nothing
+              # defined). A gen element answers the rebuild with its export, built before any `//` its author wrote.
+              # Where the root keeps the record written (`ev.child ev` false, as `threadedAs`' `whenEmpty` asks), it
+              # is the empty value of the record declared at the element's position (the copy of `e`, matched as
+              # `carriedElement` matches one); where the fix-up rebuilds it, the export's own.
+              emptyValue =
+                let
+                  ws = filter (d: isAttrs d && d ? _checkWitness && d._checkWitness == e._checkWitness) declared;
+                in
+                if !(e ? _checkWitness) || length ws != 1 || ev.child ev then
+                  e.emptyValue
+                else
+                  (head ws).emptyValue or e.emptyValue;
               # A threaded element folded at a step the split did not capture (a value the merge
               # returns, such as `functionTo`'s function body) keeps its fold, and its accessor's
               # `child` refuses by name: only a nested-tree read refuses, so a member that never
