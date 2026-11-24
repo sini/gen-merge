@@ -38,10 +38,12 @@ let
     tail
     length
     all
+    any
     imap0
     ;
   inherit (core)
     noCheckForDocsModule
+    mergeOneOption
     calledNestingRefusal
     mergeDefs
     mergeDefsThreaded
@@ -2679,6 +2681,18 @@ let
       throw "gen-merge: anything: no definitions"
     else if all (d: isList d.value) defs then
       concatLists (map (d: d.value) defs)
+    # ★★ A STRING-COERCIBLE SET (a derivation, a `toDerivation` record, any `outPath` / `__toString`
+    # set) is nixpkgs' `stringCoercibleSet` (its `anything.merge` `getType`: `isAttrs v && isStringLike
+    # v`), folded by `mergeOneOption`: ONE definition is carried whole, never rebuilt per key; two or
+    # more are refused, equal ones too; one mixed with a definition of any other type is refused as
+    # conflicting types (den-hoag-z9m0f). The test is `isStringLike` on a set, spelled as the two `?`
+    # it reduces to (`?` is false on a non-set), so it forces no `outPath` and allocates no thunk on
+    # the ordinary path, where a call to `isStringLike` would (measured, the z9m0f spec's cost table).
+    else if any (d: d.value ? outPath || d.value ? __toString) defs then
+      if all (d: d.value ? outPath || d.value ? __toString) defs then
+        mergeOneOption loc defs
+      else
+        throw "gen-merge: the option `${showOption loc}' has conflicting option types: a string-coercible set (a derivation, or a set with `outPath` or `__toString`) is defined beside a definition of another type"
     else if all (d: isAttrs d.value) defs then
       # ★★ A VALUE CARRYING `__mint` IS CARRIED WHOLE, NEVER REBUILT. `__mint` is the one mark a
       # substrate constructor writes (ADR-0016 ruling 5): the value is a CONSTRUCTION, and its identity
