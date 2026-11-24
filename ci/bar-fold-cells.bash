@@ -23,12 +23,18 @@ det2="nix-instantiate (Determinate Nix 0.0.0-bar-fold) 0.0.0"
 # cell reads the refusal-text path whatever the register holds. A register need hold no refusal row: a reference move
 # that serves its last refused cell leaves it none (hm-bar at nixpkgs d4f25a3, waveterm-example-config). The row is
 # the first one that is neither the perf row nor the PASS row the verdict lines name, written as jq writes a register
-# row, so the folds below reproduce the fixture byte for byte.
+# row, so the folds below reproduce the fixture byte for byte. Every perf row also carries a column, minted here, that
+# no log below names (`kept`), so `same`, `ms`, `moved` and `text` pin the fold's rule that an older evaluator's entry
+# is kept: the byte cells read it on the perf row, and the one-changed-row cells on the other perf rows.
+kept="nix-instantiate (Nix) 0.0.0-bar-fold-kept"
 fx=$(jq -cn --argjson p "$row" --arg pass "$pass" "first(inputs | select(.key != \$p.key and ($idf) != \$pass))" "$reg")
 [ -n "$fx" ] || { echo "FAIL $name fixture: no row besides the perf and PASS rows to carry a refusal text"; exit 1; }
-jq -c --argjson f "$fx" --arg d "$det" --arg l "$lix" --arg n "$nix" \
-  'if .key == $f.key then .verdict = "FAIL" | .refusal = ({($d): "error: bar-fold fixture: a refusal", ($l): "error: bar-fold fixture: a refusal", ($n): "error: bar-fold fixture: a refusal"} | to_entries | sort_by(.key) | from_entries) else . end' \
+jq -c --argjson f "$fx" --arg d "$det" --arg l "$lix" --arg n "$nix" --arg k "$kept" \
+  '(if .perf != null then .perf[$k] = (.perf | to_entries[0].value) else . end)
+  | if .key == $f.key then .verdict = "FAIL" | .refusal = ({($d): "error: bar-fold fixture: a refusal", ($l): "error: bar-fold fixture: a refusal", ($n): "error: bar-fold fixture: a refusal"} | to_entries | sort_by(.key) | from_entries) else . end' \
   "$reg" >"$w/fixture.reg"
+[ "$(jq -c --arg k "$kept" 'select(.perf[$k] != null)' "$w/fixture.reg" | wc -l)" -ge 2 ] ||
+  { echo "FAIL $name fixture: fewer than two perf rows carry the kept column"; exit 1; }
 # A bar's `--fold` reads the register its build baked in (`base`, `BAR_BASE`), never F, so the fixture is folded by a
 # copy of the bar whose one baked register path, asserted to be this register, names the fixture instead.
 baked=$(grep -oE "/nix/store/[a-z0-9]{32}-$name-baseline\.jsonl" "$bin" | sort -u)

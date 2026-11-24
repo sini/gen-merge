@@ -176,9 +176,13 @@ else
             else empty end ]
       + [ $base[] | select(.class == null and .overreach != null) | "INVALID-CLASS overreach without class \(.key | id)" ]
       + [ $base[] | select(validRefusal | not) | "INVALID-REFUSAL \(.key | id)" ]
-      + [ $runs[] | select(.base != null and .base.verdict == .got) | (refusalOf) as $t | (.base.refusal[$ev] // null) as $a
+      # The remedy is the fold only for an evaluator the register holds a column for (the UNANCHORED test, over every
+      # row); with none, the cause is the evaluator.
+      + [ (if $base | any(.[]; .perf[$ev] != null) then "(fold the register in this change)"
+            else "(no register column for evaluator '\($ev)': an unpinned evaluator, or a pin move not yet folded)" end) as $unfolded
+          | $runs[] | select(.base != null and .base.verdict == .got) | (refusalOf) as $t | (.base.refusal[$ev] // null) as $a
           | select($t != $a)
-          | if $a == null then "UNRECORDED-REFUSAL L\(.line) \(.id) '\($t)' (fold the register in this change)"
+          | if $a == null then "UNRECORDED-REFUSAL L\(.line) \(.id) '\($t)' \($unfolded)"
             else "REFUSAL-MOVED L\(.line) \(.id) '\($a)' -> '\($t // "(no refusal)")' (fold the register in this change)" end ]
       + [ $runs[] | select(.base == null) | "UNBASELINED L\(.line) \(.got) \(.id)" ]
       + [ $runs[] | select(.base != null and .base.verdict != .got)
