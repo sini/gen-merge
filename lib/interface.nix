@@ -3790,14 +3790,14 @@ let
                 f:
                 let
                   j = r.typeMerge f;
-                  dd = if isAttrs f && f ? __declared then [ f.__declared ] else [ ];
+                  os = if isAttrs f && f ? __declared then [ f.__declared ] else [ ];
                 in
-                if j == null || dd == [ ] && !moduleSet && !(t ? verify) && self.kept t == self.kept j then
+                if j == null || os == [ ] && !moduleSet && !(t ? verify) && self.kept t == self.kept j then
                   j
                 else if moduleSet then
-                  close false (carriedAtDepth true ([ r ] ++ dd) j)
+                  close false (carriedAtDepth true ([ r ] ++ os) j)
                 else
-                  close false (metWith.core false j ([ o ] ++ dd));
+                  close false (metWith.core false j ([ o ] ++ os));
             }
             # the return names itself as the declaration, so a partner's join receives its check (`typeMerge`, above)
             // (
