@@ -913,7 +913,9 @@ The union carries gen-types' identity helpers too. Every one of them is a functi
 record of field names: it is the one value member of `types` that is not a type, and a fold through
 it as a declared option type is refused by name.
 
-**`anything`'s fold.** Lists concatenate (reverse definition order). Attrsets recurse per key, and a
+**`anything`'s fold.** Lists fold by the equality fold, as nixpkgs' `anything` does (it has no list
+arm, so lists reach `mergeEqualOption`): equal lists give one copy, and unequal lists are refused by
+name. Attrsets recurse per key, and a
 conflict names the full path (`` `o.svc.k' ``). A key's definitions take the engine's priority spine
 before the recursion, as nixpkgs' `(attrsOf anything).merge` does: a property marker at a nested key
 (`mkIf`, `mkMerge`, `mkForce`, `mkOrder`) is discharged there, and a key whose every definition
@@ -3285,8 +3287,9 @@ same modules.
   `stack overflow; max-call-depth exceeded` (Lix: `stack overflow (possible infinite recursion)`),
   which `tryEval` does not catch: the check-only
   `mkOptionType` default's shared-key compare (`mergeDescriptorDefault`, above),
-  the `attrs` fold's shared-key compare (above), the no-fold leaf combine (`mergeLeaf`), and its
-  exported twin (`leafFold`). 6a508e3 aborts on the same input at the first, third and fourth, so
+  the `attrs` fold's shared-key compare (above), the no-fold leaf combine (`mergeLeaf`, which
+  `anything`'s lists reach too, as nixpkgs' lists reach `mergeEqualOption`), and its exported twin
+  (`leafFold`). 6a508e3 aborts on the same input at the first, third and fourth, so
   this is a boundary the folds inherit, not one they introduced. The two attrset folds decide per
   key (`unionAgreeing`), so they reach the abort only at the read of the cyclic key itself; the key
   set and every sibling serve.

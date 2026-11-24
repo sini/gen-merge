@@ -112,7 +112,7 @@ decision trace.
 | `either`                  | `type -> type -> type`                                                                                                                |
 | `oneOf`                   | `[type] -> type` (left-nested `either`, as nixpkgs; empty list throws)                                                                |
 | `raw`                     | `type` (a value) — one winner, or all-equal winners                                                                                   |
-| `anything`                | `type` (a value) — lists concat, attrsets recurse per key, else the leaf fold; a value carrying `__mint` is carried whole             |
+| `anything`                | `type` (a value) — attrsets recurse per key, else the leaf fold (lists included); a value carrying `__mint` is carried whole          |
 
 **Unified type namespace**
 

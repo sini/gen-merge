@@ -1009,42 +1009,43 @@ in
     };
   };
 
-  # ★★ A STATED DIVERGENCE FROM THE FOREIGN PROTOCOL, ASSERTED RATHER THAN INHERITED
-  # (den-hoag-1fu0a). nixpkgs' `anything` has NO list arm: `commonType` agrees on `"list"`, the
-  # `mergeFunction` table has no entry for it, and it falls to `mergeEqualOption` — so `[ 1 ]` and
-  # `[ 2 ]` are a REFUSAL there (measured at the pinned rev) and a CONCATENATION here. gen-merge's
-  # divergence is declared in the type's own header ("lists concat") and is deliberate, but a
-  # divergence with no cell is one nobody can find; this is the cell. It records WHAT IS and changes
-  # nothing — the arm was left exactly as it was.
-  #
-  # ★ ITS RED IS ANY CHANGE TO THE LIST ARM, in either direction: adopting nixpkgs' refusal, or
-  # folding lists some other way. A characterisation cell passes today by construction, so what
-  # earns it its lines is that it is what goes red — deliberately — the day someone closes the
-  # divergence, rather than the divergence closing unremarked.
-  flake.tests.anything.test-list-definitions-concatenate-where-nixpkgs-refuses = {
-    expr = cfg {
-      modules = [
-        { options.o = mkOption { type = t.anything; }; }
-        {
-          _file = "A";
-          o = [ 1 ];
-        }
-        {
-          _file = "B";
-          o = [ 2 ];
-        }
-      ];
-    };
-    # Reverse module order, as everywhere else on the def path.
+  # nixpkgs' `anything` has no list arm: `commonType` agrees on `"list"`, its `mergeFunction` table has
+  # no entry for it, and it falls to `mergeEqualOption`. gen's `anything` folds lists the same way,
+  # through `mergeLeaf`: UNEQUAL list definitions are refused by name, EQUAL ones fold to one copy
+  # (den-hoag-h76uk; it used to concatenate both). RED: a list arm that concatenates serves `[ 2 1 ]`
+  # for the first and `[ 1 1 ]` for the second.
+  flake.tests.anything.test-list-definitions-fold-by-the-equal-option-law = {
+    expr =
+      let
+        at =
+          a: b:
+          cfg {
+            modules = [
+              { options.o = mkOption { type = t.anything; }; }
+              {
+                _file = "A";
+                o = a;
+              }
+              {
+                _file = "B";
+                o = b;
+              }
+            ];
+          };
+      in
+      {
+        unequal = (builtins.tryEval (builtins.deepSeq (at [ 1 ] [ 2 ]) null)).success;
+        equal = at [ 1 ] [ 1 ];
+      };
     expected = {
-      o = [
-        2
-        1
-      ];
+      unequal = false;
+      equal = {
+        o = [ 1 ];
+      };
     };
   };
 
-  # The structural arms: all-list definitions concatenate, all-attrset definitions recurse per key,
+  # The structural arms: equal list definitions fold to one copy, all-attrset definitions recurse per key,
   # and a key only one definition supplies passes through as the sole winner. The nested `same` key
   # is defined twice and EQUALLY — the descent's own agree-or-refuse, one level down, answering with
   # a value.
@@ -1065,7 +1066,7 @@ in
         }
         {
           _file = "B";
-          l = [ 2 ];
+          l = [ 1 ];
           a = {
             onlyB = "b";
             deep.same = "s";
@@ -1074,11 +1075,7 @@ in
       ];
     };
     expected = {
-      # Reverse module order, as everywhere else on the def path.
-      l = [
-        2
-        1
-      ];
+      l = [ 1 ];
       a = {
         onlyA = "a";
         onlyB = "b";

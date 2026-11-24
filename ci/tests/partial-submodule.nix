@@ -5,7 +5,7 @@
 #
 # ★ THE REFERENCE IS nixpkgs OVER ALL THE DEFINITIONS AT ONCE, and each cell runs it. The gen arm folds the
 # first group through a `partialSubmodule`'s declared `listOf str` option, then folds that value with the
-# second group under `anything`. Lists are compared as sets: which definitions win is the cell's subject,
+# second group under the same declared type (`attrsOf (listOf str)`; `anything` folds lists by equality). Lists are compared as sets: which definitions win is the cell's subject,
 # and the order axis is den-hoag-3849t P4's bound.
 #
 # RED: the realizer's partial `mergeOption` returning the bare value gives both groups where the first
@@ -80,7 +80,7 @@ let
     let
       c = (fx gm).${n};
     in
-    (t.anything.merge [ "o" ] (
+    ((t.attrsOf (t.listOf t.str)).merge [ "o" ] (
       map (value: {
         file = "f";
         inherit value;
