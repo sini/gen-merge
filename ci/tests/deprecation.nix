@@ -236,16 +236,13 @@ in
       };
     };
 
-    # 8 — SCOPE, one eval, asserted so the boundary is a decision rather than an accident. A
-    # `submodule`'s inner options are declared in a NESTED `evalModuleTree` that runs INSIDE the
-    # type's `merge`, and `merge` returns the merged VALUE — byte-compat pins that shape, so the
-    # nested eval cannot hand its report back alongside the value it was called for. That is the
-    # whole of the boundary: the nested view is NOT unreachable. The live control in this cell is the
-    # re-derivation the protocol already allows — `getSubModules` are the sub-modules, so evaluating
-    # them as their own tree yields the nested records with `merge` never entered. It reports
-    # `declarations = [ "<unknown-file>" ]` because sub-modules carry no `_file`, which is the reason
-    # the parent does not fold this view into its own report rather than a reason it could not.
-    test-scope-is-this-eval-not-nested-ones = {
+    # 8 — a HELD option (one a declared leaf's type holds: here a `submodule`'s option) is reported at
+    # the DECLARATION stratum, through the type's `getSubOptions`, with `merge` never entered: the nested
+    # eval inside `merge` still has no channel for its report, and none is needed (den-hoag-y3zot). The
+    # record is the one evaluating the sub-modules as their own tree gives, under the held option's own
+    # loc; that re-derivation stays in the cell as its control. `declarations` is `<unknown-file>`
+    # because these sub-modules carry no `_file`, the datum nixpkgs' own warning prints for them.
+    test-held-option-is-reported-at-the-declaration-stratum = {
       expr =
         let
           subTy = t.submodule {
@@ -270,7 +267,17 @@ in
             (evalModuleTree { prefix = [ "s" ]; } subTy.getSubModules).deprecations;
         };
       expected = {
-        throughSubmodule = [ ];
+        throughSubmodule = [
+          {
+            path = [
+              "s"
+              "inner"
+            ];
+            type = "depA";
+            message = "use `plainA' instead";
+            declarations = [ "<unknown-file>" ];
+          }
+        ];
         reDerivedFromTheDeclarationStratum = [
           {
             path = [

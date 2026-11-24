@@ -9882,8 +9882,42 @@ let
                   message = if ty == null then null else ty.deprecated or (interface.importedDeprecation ty);
                   declarations = map (s: s.file) (sitesAt loc);
                 };
+              # HELD options: an option a declared leaf's TYPE holds (an attrTag tag, a submodule's
+              # option) is declared in the type, so it is read at the declaration stratum through the
+              # protocol's `getSubOptions`, never through `merge` (den-hoag-y3zot). Its loc is its own
+              # (`<name>`/`*` placeholders included), its declarations its own descriptor's. The tree is
+              # read through the spine (`spineDeclares`), so a cycle through containers alone refuses by
+              # name instead of overflowing inside a foreign `getSubOptions`.
+              # PROTOTYPE: the exhaustion posture is the spec's open question; this arm refuses by name.
+              heldOf =
+                fuel: loc: ty:
+                if ty == null then
+                  [ ]
+                else if fuel <= 0 then
+                  throw "gen-merge: the deprecation report descended ${toString interface.importedTypeWalkFuel} held options below `${showOption loc}' without reaching a leaf type"
+                else
+                  concatMap (
+                    e:
+                    let
+                      hty = e.opt.type or null;
+                      hloc = e.opt.loc or (loc ++ e.path);
+                    in
+                    [
+                      {
+                        path = hloc;
+                        type = hty.name or null;
+                        message = if hty == null then null else hty.deprecated or (interface.importedDeprecation hty);
+                        declarations = e.opt.declarations or [ ];
+                      }
+                    ]
+                    ++ heldOf (fuel - 1) hloc hty
+                  ) (declLeafEntries (interface.spineDeclares interface.importedTypeWalkFuel ty loc));
             in
-            filter (d: d.message != null) (map record (declLeafEntries allOptions));
+            filter (d: d.message != null) (
+              concatMap (
+                e: [ (record e) ] ++ heldOf interface.importedTypeWalkFuel (prefix ++ e.path) (e.opt.type or null)
+              ) (declLeafEntries allOptions)
+            );
 
           # ── decision trace (design spec §4) — the memoization DECISION, always-on data on the warm
           # path (the eval computes the partition anyway). Consumed by gen-memo's
