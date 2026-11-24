@@ -5771,10 +5771,27 @@ let
               # defined). A gen element answers the rebuild with its export, built before any `//` its author wrote.
               # Where the root keeps the record written (`ev.child ev` false, as `threadedAs`' `whenEmpty` asks), it
               # is the empty value of the record declared at the element's position (the copy of `e`, matched as
-              # `carriedElement` matches one); where the fix-up rebuilds it, the export's own.
+              # `carriedElement` matches one), found below any foreign record the rebuild passes the marker through
+              # (`coercedTo`, `uniq`, a nested `functionTo`) and never inside a gen record, which answers the marker
+              # itself; where the fix-up rebuilds it, the export's own. Bounded by the walks' fuel.
               emptyValue =
                 let
-                  ws = filter (d: isAttrs d && d ? _checkWitness && d._checkWitness == e._checkWitness) declared;
+                  copiesIn =
+                    fuel: ds:
+                    prelude.concatMap (
+                      d:
+                      if !(isAttrs d) then
+                        [ ]
+                      else if d ? _checkWitness then
+                        (if d._checkWitness == e._checkWitness then [ d ] else [ ])
+                      else if fuel > 0 then
+                        copiesIn (fuel - 1) (
+                          prelude.concatMap (v: if isList v then v else [ v ]) (prelude.attrValues (positionsOf d))
+                        )
+                      else
+                        [ ]
+                    ) ds;
+                  ws = copiesIn importedTypeWalkFuel declared;
                 in
                 if !(e ? _checkWitness) || length ws != 1 || ev.child ev then
                   e.emptyValue
