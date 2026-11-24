@@ -5983,10 +5983,7 @@ let
       || rewritesCheck t
     then
       refuse "has a `merge' or `check' rewritten over its export"
-    else if !(all (d: c.admits d.value) defs) then
-      throw "gen-merge: option `${showOption loc}' has definitions `${nameOf c}' cannot consume (${
-        concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: !(c.admits d.value)) defs))
-      })"
+    # a definition outside the domain is refused by the fold itself (`refusingOutside`), in the value path's words
     else
       let
         r = t.mergeDefs.threaded (
