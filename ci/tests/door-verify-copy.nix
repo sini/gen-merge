@@ -1,6 +1,7 @@
 # A verify copy of a type through the published doors (`types.defineType`, `mkOptionType`) is judged on its MERGED
-# value by gen's readers, as the raw copy is, and publishes a one-definition projection as its own check witness for
-# foreign readers (den-hoag-d74w0, owner arm (ii)). An ad-hoc override beside the verify stays a per-definition check.
+# value by gen's readers, as the raw copy is, and by a foreign fold through v2 on the settled value (den-hoag-admdl,
+# arm L); it publishes a one-definition projection as its own check witness for a foreign reader asking membership
+# per definition (den-hoag-d74w0). An ad-hoc override beside the verify stays a per-definition check.
 {
   genMerge,
   nixpkgsLib,
@@ -342,11 +343,11 @@ in
         two.a = 2;
       }) (doors // { raw = x: x; });
     };
-    # Through each door, a foreign union read under nixpkgs' own `evalModules` sees the copy's one-definition
-    # projection (owner arm (ii)): at a union whose other member does not overlap the copy, a split the verify
-    # admits only merged is refused, as nixpkgs' own `addCheck` twin refuses it, and a merged value the verify
-    # rejects is refused too, for a nesting copy and a copy of a container over leaves.
-    test-a-door-completed-verify-copy-is-judged-per-definition-at-a-foreign-union = {
+    # Through each door, a foreign union read under nixpkgs' own `evalModules` judges the copy's `verify` on the
+    # SETTLED value, through the union's v2 channel (den-hoag-admdl, arm L): at a union whose other member does not
+    # overlap the copy, a split the verify admits only merged is served at the raw copy's nixpkgs value, and a merged
+    # value the verify rejects is refused, for a nesting copy and a copy of a container over leaves.
+    test-a-door-completed-verify-copy-judges-the-settled-value-at-a-foreign-union = {
       expr = mapAttrs (
         _: door:
         mapAttrs (
@@ -360,9 +361,21 @@ in
       expected = mapAttrs (
         _: _:
         mapAttrs (
-          _: _:
+          kn: _:
           mapAttrs (_: _: {
-            ok = "REFUSED";
+            ok =
+              {
+                nest = {
+                  a = 1;
+                  b = 1;
+                  c = 5;
+                };
+                leaf = [
+                  2
+                  1
+                ];
+              }
+              .${kn};
             bad = "REFUSED";
           }) unions
         ) kinds
