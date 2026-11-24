@@ -6644,6 +6644,56 @@ in
           };
         };
       };
+    # den-hoag-0g61j — a freeform key's priority meets its own key's error and nothing else: a throwing
+    # condition or value throws from `priority` and `priorityState`, never reading as absence, while its
+    # `defs` and a sibling's priority still answer (the value cells are ./tests/freeform-priority.nix). The
+    # sibling refusal is the demand control's: the value the priority read never forced throws when read.
+    flake.testsError.freeformPriority =
+      let
+        ff =
+          mods:
+          gm.evalModuleTree { } (
+            [ { freeformType = t.attrsOf t.anything; } ] ++ map (m: { _file = "e.nix"; } // m) mods
+          );
+        cond = ff [ { x = gm.mkIf (throw "COND") 1; } ];
+        val = ff [ { x = throw "VAL"; } ];
+        sibling = ff [
+          {
+            a = gm.mkForce 1;
+            b = throw "SIBLING-FORCED";
+          }
+        ];
+      in
+      {
+        test-a-throwing-condition-throws-from-the-priority = {
+          expr = cond.provenance.x.priority;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^COND$";
+          };
+        };
+        test-a-throwing-condition-throws-from-the-state = {
+          expr = cond.provenance.x.priorityState;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^COND$";
+          };
+        };
+        test-a-throwing-value-throws-from-the-priority = {
+          expr = val.provenance.x.priority;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^VAL$";
+          };
+        };
+        test-the-unforced-sibling-throws-when-read = {
+          expr = sibling.config.b;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^SIBLING-FORCED$";
+          };
+        };
+      };
     # den-hoag-zakjg U1 — `bandedLeaves`' refusals, and the values its records never force. The
     # value cells are ./tests/bands.nix.
     flake.testsError.bands =
