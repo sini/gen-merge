@@ -6244,6 +6244,10 @@ let
           inherit loc defs;
         }
       ]
+    # `nf = null`: the caller held no fact for `t` (a re-homed element), so it is walked here; every caller holding one
+    # passes it as a variable, so an element costs no thunk for it (den-hoag-03kig arm C)
+    else if nf == null then
+      keyWalk under group t (interface.nestFact t) pos loc defs
     else if !(isAttrs t) || !nf.ans then
       [ ]
     else if under != null && pos == [ ] then
@@ -6294,9 +6298,7 @@ let
           let
             ce = interface.homedAt "evalModuleTree" (loc ++ [ k ]) t.carries.element;
           in
-          keyWalk "lazyAttrsOf" group ce (if cf != null then cf else interface.nestFact ce) (pos ++ [ k ]) (
-            loc ++ [ k ]
-          ) (addressedDefs defsByKey.${k})
+          keyWalk "lazyAttrsOf" group ce cf (pos ++ [ k ]) (loc ++ [ k ]) (addressedDefs defsByKey.${k})
         ) (attrNames defsByKey)
       else
         [ ]
@@ -6363,39 +6365,36 @@ let
         let
           ce = interface.homedAt "evalModuleTree" e.loc e.type;
         in
-        keyWalk (if exact then null else name) group ce (if cf != null then cf else interface.nestFact ce)
-          (pos ++ e.step)
-          e.loc
-          (
-            addressedDefs (
-              map (
-                # A threaded foreign split hands its foreign merge `{ file; value; }` alone, so a definition
-                # that merge built carries no address back (`foreignDeclAtRefusal`); every other split is
-                # gen's own and passes the carrier through. Below a foreign split the carrier is told apart
-                # by its `at`, since the foreign merge may write an attrset `file` of its own. Tested inline:
-                # a `let` binding costs every gen-native split a thunk.
-                if t ? __threadedForeign then
-                  d:
-                  if isAttrs d.file && d.file ? at then
-                    {
-                      inherit (d.file) file;
-                      inherit (d) value;
-                      at = d.file.at ++ (if name == "listOf" then [ (prelude.last e.step) ] else e.step);
-                    }
-                  else
-                    {
-                      inherit (d) file value;
-                      at = throw (foreignDeclAtRefusal group e.loc t);
-                    }
-                else
-                  d: {
+        keyWalk (if exact then null else name) group ce cf (pos ++ e.step) e.loc (
+          addressedDefs (
+            map (
+              # A threaded foreign split hands its foreign merge `{ file; value; }` alone, so a definition
+              # that merge built carries no address back (`foreignDeclAtRefusal`); every other split is
+              # gen's own and passes the carrier through. Below a foreign split the carrier is told apart
+              # by its `at`, since the foreign merge may write an attrset `file` of its own. Tested inline:
+              # a `let` binding costs every gen-native split a thunk.
+              if t ? __threadedForeign then
+                d:
+                if isAttrs d.file && d.file ? at then
+                  {
                     inherit (d.file) file;
                     inherit (d) value;
                     at = d.file.at ++ (if name == "listOf" then [ (prelude.last e.step) ] else e.step);
                   }
-              ) e.defs
-            )
+                else
+                  {
+                    inherit (d) file value;
+                    at = throw (foreignDeclAtRefusal group e.loc t);
+                  }
+              else
+                d: {
+                  inherit (d.file) file;
+                  inherit (d) value;
+                  at = d.file.at ++ (if name == "listOf" then [ (prelude.last e.step) ] else e.step);
+                }
+            ) e.defs
           )
+        )
       ) (t.split loc (map (d: d // { file = d; }) defs));
 
   # A UNION's keys (v10, S1 RULED (ii)): each member that may nest, in order, at the union's own
