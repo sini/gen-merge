@@ -803,6 +803,13 @@ in
   # asks pays no thunk for it.
   verifyValue = type: value: strategies.verifyValue type value;
 
+  # The nested evaluation a nesting type's exported `merge` makes over `defs` at `loc`, returned as
+  # `{ config; provenance; }` (den-hoag-t5ndo): the same child, so the caller retains what the value path
+  # computed instead of evaluating the tree a second time. A lambda, as `verifyValue` is.
+  evalNested =
+    type: loc: defs:
+    core.interface.nestedEvaluation type loc defs;
+
   inherit (strategies) partialAttrsOf;
   # `submodule` whose every declared option folds PARTIALLY (den-hoag-5ov3p), the declared-plane twin of
   # `partialAttrsOf`: an option's value is its winning definitions merged, under the priority that selected

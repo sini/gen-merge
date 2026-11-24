@@ -5951,6 +5951,44 @@ let
     rootRebuilds = false;
   };
 
+  # THE BRIDGE CHILD, RETAINED (den-hoag-t5ndo 1b): the one root evaluation a nesting type's exported `merge`
+  # makes over `defs` at `loc` (`bridged` → its `threaded` fold → `exportBridge.child`), returned whole to the
+  # caller rather than as its `config` alone. Built from the record the fold was completed with
+  # (`mergeDefs.completed`), so the module set, arguments and domain are the ones the exported fold closed over,
+  # and refused by name where the type's `merge` is not that fold: a record that is not nesting (a leaf, a
+  # container, gen-schema's `refined` copy, which keeps `nests` and loses the sibling), a fold taken by `//`, a
+  # `merge` or `check` rewritten over the export.
+  nestedEvaluation =
+    t: loc: defs:
+    let
+      c = t.mergeDefs.completed or null;
+      at = builtins.${"unsafeGetAttrPos"};
+      refuse =
+        why:
+        throw "gen-merge: evalNested: the option type `${nameOf t}' at `${showOption loc}' ${why}, so there is no nested evaluation its `merge' makes to return";
+    in
+    if !(isAttrs t) || !(isNesting t) then
+      refuse "is not a gen nesting type (it states no nested tree with its threaded fold)"
+    else if !(isAttrs c) || t.mergeDefs != c.mergeDefs then
+      refuse "folds by a fold that is not the one its record was completed with"
+    else if at "merge" t != at "merge" c || rewritesCheck t then
+      refuse "has a `merge' or `check' rewritten over its export"
+    else if !(all (d: c.admits d.value) defs) then
+      throw "gen-merge: option `${showOption loc}' has definitions `${nameOf c}' cannot consume (${
+        concatStringsSep ", " (map (d: toString (d.file or "<def>")) (filter (d: !(c.admits d.value)) defs))
+      })"
+    else
+      let
+        r = exportBridge.child {
+          position = [ ];
+          inherit (c) nests;
+          inherit loc defs;
+        };
+      in
+      {
+        inherit (r) config provenance;
+      };
+
   # THE FOREIGN-PROTOCOL TYPE MERGE, which is where the engine reaches this half. A foreign partner
   # has no gen relation and never will, so the question "do these two merge?" is asked in the
   # protocol's own terms: the first type's `typeMerge` applied to the second's functor.
@@ -9814,6 +9852,7 @@ in
     mayFoldNested
     bridge
     exportBridge
+    nestedEvaluation
     emptyAccessor
     importedCarried
     importedOffered
