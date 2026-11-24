@@ -5776,7 +5776,7 @@ let
               # itself; where the fix-up rebuilds it, the export's own. Bounded by the walks' fuel.
               emptyValue =
                 let
-                  copiesIn =
+                  go =
                     fuel: ds:
                     prelude.concatMap (
                       d:
@@ -5785,13 +5785,13 @@ let
                       else if d ? _checkWitness then
                         (if d._checkWitness == e._checkWitness then [ d ] else [ ])
                       else if fuel > 0 then
-                        copiesIn (fuel - 1) (
+                        go (fuel - 1) (
                           prelude.concatMap (v: if isList v then v else [ v ]) (prelude.attrValues (positionsOf d))
                         )
                       else
                         [ ]
                     ) ds;
-                  ws = copiesIn importedTypeWalkFuel declared;
+                  ws = go importedTypeWalkFuel declared;
                 in
                 if !(e ? _checkWitness) || length ws != 1 || ev.child ev then
                   e.emptyValue
