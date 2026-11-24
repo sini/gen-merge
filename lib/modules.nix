@@ -9716,25 +9716,42 @@ let
                   && t ? carries.element
                   && (t.mergeDefs.container or null == "attrsOf" || t.mergeDefs.container or null == "lazyAttrsOf")
                   && t.mergeDefs == (t.mergeDefs.completed.mergeDefs or null);
+                # `t` folds the definitions holding the key `head rest` at group `q`; `rest` ends at the captured key
                 freeformSelectsAt =
-                  t: n:
-                  if n == 0 then
-                    freeformKeyed t
-                  else
-                    freeformKeyed t && freeformGroupSelects t.carries.element (n - 1);
+                  t: q: rest:
+                  freeformKeyed t
+                  && (tail rest == [ ] || freeformGroupSelects t.carries.element (q ++ [ (head rest) ]) (tail rest));
+                # `anything` folds a group's subtrees by key unless every one carries `__mint`, where it carries
+                # them whole (`mergeLeaf`) and selects nothing: that arm is read off the captured paths alone
                 freeformGroupSelects =
-                  e: n:
+                  e: q: rest:
                   if isAttrs e && e ? mergeDefs && e.mergeDefs == strategies.anything.mergeDefs then
-                    n == 0 || freeformGroupSelects e (n - 1)
+                    !(mintArmAt q) && (tail rest == [ ] || freeformGroupSelects e (q ++ [ (head rest) ]) (tail rest))
                   else
-                    freeformSelectsAt e n;
+                    freeformSelectsAt e q rest;
+                mintArmAt =
+                  q:
+                  let
+                    marked = byPath.${showOption (q ++ [ "__mint" ])} or [ ];
+                    has = listToAttrs (
+                      map (u: {
+                        name = toString u.modIndex;
+                        value = null;
+                      }) marked
+                    );
+                    n = length q;
+                  in
+                  marked != [ ]
+                  && all (
+                    u: !(length u.path > n && take n u.path == q) || has ? ${toString u.modIndex}
+                  ) realized.unmatched;
                 # the type the value fold runs (`freeformConfigCold`), restated here so no evaluation pays a binding for it
                 folding =
                   if interface.canNest freeform then interface.homedAt "evalModuleTree" prefix freeform else freeform;
                 # a key's override selection, replayed over the very definitions the value fold reads at that key
                 selected =
                   us:
-                  if !(freeformSelectsAt folding (length (head us).path - 1)) then
+                  if !(freeformSelectsAt folding [ ] (head us).path) then
                     {
                       priority = null;
                       priorityState = "unobservable";
