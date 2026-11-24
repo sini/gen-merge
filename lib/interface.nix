@@ -5969,7 +5969,19 @@ let
   nestedEvaluation =
     t: loc: defs:
     let
-      m = t.merge or null;
+      # the merge's own record, or the unchecked fold a checked import fold carries (the import arm's record states
+      # it; its check is the record's `check`, which the route applies below): read by presence, nothing compared
+      m0 = t.merge or null;
+      m =
+        if
+          isAttrs m0
+          && !(m0 ? nestedEvaluation)
+          && isAttrs (m0.unchecked or null)
+          && m0.unchecked ? nestedEvaluation
+        then
+          m0.unchecked
+        else
+          m0;
       refuse =
         why:
         throw "gen-merge: evalNested: the option type `${nameOf t}' at `${showOption loc}' ${why}, so there is no nested evaluation its `merge' makes to return";

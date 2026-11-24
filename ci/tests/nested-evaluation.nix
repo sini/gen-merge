@@ -865,11 +865,12 @@ in
         "refused"
       ];
     };
-    # D1 (den-hoag-06010): the published `mkOptionType` door picks its arm by `rewritesCheck` (a function `!=`), so for
-    # a record carrying a sibling's `check` it hands Lix a differently shaped record than Nix and Determinate, and the
-    # route serves on Nix / Determinate and refuses on Lix. The arm-independent invariant is pinned here, identical on
-    # every evaluator: the route never serves a value its `merge` does not, and the `merge` serves the user's child.
-    test-d1-door-split-route-never-serves-a-different-value = {
+    # D1 (Artemis outcome gate 01M86X5M; the door's own split is den-hoag-06010): the published `mkOptionType` door picks
+    # its arm by `rewritesCheck` (a function `!=`), so for a record carrying a sibling's `check` it hands Lix a checked
+    # import fold (`{ __functor; completed; unchecked; }`, the record's own merge riding on it as `unchecked`) and Nix and
+    # Determinate a gen export. The route reads the evaluation either carries, so it serves the user's child, as the merge
+    # does, on every evaluator. Red at 78a5b68 / a279ad9 without the `unchecked` read: served / served / refused.
+    test-d1-door-split-route-serves-as-the-merge-serves = {
       expr =
         let
           x = gm.mkOptionType (userType // builtins.intersectAttrs { check = null; } siblingType);
@@ -877,10 +878,12 @@ in
         in
         {
           invariant = r == "refused" || r == val (x.merge loc reg);
+          route = who (route x loc reg).config;
           merge = who (x.merge loc reg);
         };
       expected = {
         invariant = true;
+        route = "user";
         merge = "user";
       };
     };
