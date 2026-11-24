@@ -38,12 +38,10 @@ let
     tail
     length
     all
-    any
     imap0
     ;
   inherit (core)
     noCheckForDocsModule
-    mergeOneOption
     calledNestingRefusal
     mergeDefs
     mergeDefsThreaded
@@ -2701,11 +2699,13 @@ let
     # v`), folded by `mergeOneOption`: ONE definition is carried whole, never rebuilt per key; two or
     # more are refused, equal ones too; one mixed with a definition of any other type is refused as
     # conflicting types (den-hoag-z9m0f). The test is `isStringLike` on a set, spelled as the two `?`
-    # it reduces to (`?` is false on a non-set), so it forces no `outPath` and allocates no thunk on
-    # the ordinary path, where a call to `isStringLike` would (measured, the z9m0f spec's cost table).
-    else if any (d: d.value ? outPath || d.value ? __toString) defs then
+    # it reduces to (`?` is false on a non-set), so it forces no `outPath` and allocates no thunk per
+    # definition on the ordinary path, where a call to `isStringLike` would; `builtins.any` and
+    # `core.mergeOneOption` are read in place because an `inherit` binding is a thunk per import
+    # (measured, the z9m0f spec's cost table).
+    else if builtins.any (d: d.value ? outPath || d.value ? __toString) defs then
       if all (d: d.value ? outPath || d.value ? __toString) defs then
-        mergeOneOption loc defs
+        core.mergeOneOption loc defs
       else
         throw "gen-merge: the option `${showOption loc}' has conflicting option types: a string-coercible set (a derivation, or a set with `outPath` or `__toString`) is defined beside a definition of another type"
     else if all (d: isAttrs d.value) defs then
