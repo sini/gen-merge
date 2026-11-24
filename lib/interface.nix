@@ -3394,6 +3394,16 @@ let
   # not carried, as `crossedRoot` states for the mount.
   carriedAtDepth =
     let
+      # The fields nixpkgs' fold reads off a type that carry no check, kept from the record a re-mint replaces
+      # (`carriedAtDepth`'s `over`): `emptyValue` (`mergeDefinitions`, an option nothing defined) and
+      # `deprecationMessage` with the `name` its warning prints (`evalOptionValue`). A constructor's re-mint states its
+      # own `name`, which departs from the record's (`loaOf` is `attrsOf` under another name). Copied as slots, unforced.
+      # `getSubModules` is absent: a re-carried element's module set is the rebuild's.
+      writtenSlice = {
+        emptyValue = null;
+        deprecationMessage = null;
+        name = null;
+      };
       owes =
         o:
         isAttrs o
@@ -8570,16 +8580,6 @@ let
   # answers for its base's verify only. One slice of each record, compared by the pointer of its slot as
   # `stampAgrees` compares one, so the answer is the same on every evaluator for a replaced verify.
   verifySlice = builtins.intersectAttrs { verify = null; };
-  # The fields nixpkgs' fold reads off a type that carry no check, kept from the record a re-mint replaces
-  # (`carriedAtDepth`'s `over`): `emptyValue` (`mergeDefinitions`, an option nothing defined) and
-  # `deprecationMessage` with the `name` its warning prints (`evalOptionValue`). A constructor's re-mint states its
-  # own `name`, which departs from the record's (`loaOf` is `attrsOf` under another name). Copied as slots, unforced.
-  # `getSubModules` is absent: a re-carried element's module set is the rebuild's.
-  writtenSlice = {
-    emptyValue = null;
-    deprecationMessage = null;
-    name = null;
-  };
   replacesVerify =
     t:
     t ? verify && !((t.__typeSelf or null) != null && verifySlice t == verifySlice (t.__typeSelf null));
