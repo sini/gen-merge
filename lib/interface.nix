@@ -3694,8 +3694,13 @@ let
   # the constructor. So the record is returned with every check it states kept, its rebuilds answering it again with
   # the same carriage gen's engine gives a declaration list (`carryBy` over the record, `carriedAtDepth` for a module
   # set's elements): the carried record states its own check, conjoined, never overwritten. A record stating no module
-  # set is closed under `typeMerge`, its rebuild carrying only its own check and `verify`; a rebuild that IS the record
-  # (`kept`) carries nothing, and a constant constructor's own record crosses as itself. A `verify` is read on the merged
+  # set is closed under `typeMerge`, its join meeting each declaration it folded, its own and each partner's that names
+  # itself in its functor (`__declared`), at that declaration's top-level check, and over a module set at every depth.
+  # Three populations of the same class are not met and stay open defects: an element check inside a nixpkgs container
+  # (`listOf`/`attrsOf` of a checked element), a widened operand's check inside a module set (an `enum` in an
+  # `attrTag`), and a met record an author redeclares. A rebuild that IS the record (`kept`) and meets no partner
+  # carries nothing, and a constant constructor's own record crosses as itself (a join it receives is nixpkgs' own,
+  # where a partner's check is nixpkgs' drop, ADR-0039 "Not covered"). A `verify` is read on the merged
   # value, as gen's own fold reads one (`checked`) and as the stock-host guard reads one (`guardedOption`): a definition
   # alone is not the value it refines, and it is stated where a fold asks membership (`verifiedMerge`).
   rebuildClosed = {
@@ -3735,8 +3740,11 @@ let
             top: r:
             let
               c =
-                if moduleSet || !top then
+                if moduleSet then
                   carryBy false o r
+                # a join stating no module set is already the meet of the declarations it folded (`typeMerge`, below)
+                else if !top then
+                  r
                 # a top record stating no module set is the caller's, its check stated where nixpkgs' fold reads it
                 # (den-hoag-v4cw1)
                 else if isV2 r then
@@ -3775,16 +3783,49 @@ let
                 { }
             )
             // {
+              # a join owes the declarations it has folded (ADR-0039 THE MEET), at their top-level checks (the scope
+              # stated above `rebuildClosed`): this record's own, and each partner's, which nixpkgs hands over only as a
+              # functor, so the partner is the declaration its functor names (`__declared`, as `carriedCopy` states
+              # one), unless it IS this record's own (`kept`), which the meet owes once. Over a module set the join
+              # carries them at every depth (`carriedAtDepth`); otherwise it is their meet, each owed relative to its
+              # own parameters where the join widens them (`metWith`), never the accumulator's check. A met receiver
+              # (`__meetJoin`) answers with its own `typeMerge`, which meets the partner's declaration beside every one
+              # it holds, so the join is met once per step; a join every declaration of which IS the join meets nothing
               typeMerge =
                 f:
                 let
                   j = r.typeMerge f;
+                  os =
+                    if isAttrs f && f ? __declared && self.kept f.__declared != self.kept o then
+                      [ f.__declared ]
+                    else
+                      [ ];
                 in
-                if j == null || !moduleSet && !(t ? verify) && self.kept t == self.kept j then
+                if
+                  j == null
+                  || !(isAttrs f && f ? __declared) && !moduleSet && !(t ? verify) && self.kept t == self.kept j
+                then
                   j
+                else if moduleSet then
+                  close false (carriedAtDepth true ([ r ] ++ os) j)
+                else if r ? __meetJoin then
+                  if t ? verify then close false j else j
+                else if self.kept o == self.kept j && (os == [ ] || self.kept (head os) == self.kept j) then
+                  close false j
                 else
-                  close false (if moduleSet then carriedAtDepth true [ r ] j else j);
-            };
+                  close false (metWith.core false j ([ o ] ++ os));
+            }
+            # the return names itself as the declaration, so a partner's join receives its check (`typeMerge`, above)
+            // (
+              if top && isAttrs (r.functor or null) then
+                {
+                  functor = r.functor // {
+                    __declared = o;
+                  };
+                }
+              else
+                { }
+            );
         in
         close true t;
     # WHETHER A REBUILD DROPS NOTHING THE RECORD STATES (den-hoag-dw8d3 F2): `kept t == kept j`, the rebuild `j` IS the
@@ -5963,12 +6004,19 @@ let
   # A join the witness declines because it RENAMES an operand is still answered: it is the step's
   # carrier, and the one caller (`modules.nix` `relationMergeWithin`) meets it with every operand
   # (`rolesMet`, and `mergeTypesBy` → `metWith`), so the dropped check is owed again rather than refused.
+  #
+  # The second operand's functor is handed without the declaration a door names in it (`__declared`): that slot tells
+  # a fold that owes only its accumulated carrier (nixpkgs') which declaration to owe, and this fold owes every
+  # declaration it folded itself, by its debt (`metWith`; ADR-0039 THE MEET), so a door return's join handed it would
+  # meet a declaration this fold already owes, at every step its fold re-reads. TWIN of `importedMergeReason`'s call
   importedMerge =
     a: b:
     if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
       (
         let
-          j = a.typeMerge b.functor;
+          j = a.typeMerge (
+            if b.functor ? __declared then builtins.removeAttrs b.functor [ "__declared" ] else b.functor
+          );
           # a join the step can apply states the check and the fold an operand states; any other answer is
           # no join (the test is inline, so the pair pays no binding for it)
           k =
@@ -6198,7 +6246,14 @@ let
   importedMergeReason =
     a: b:
     let
-      j = if a ? typeMerge && b ? functor then a.typeMerge b.functor else null;
+      # the functor handed without a door's `__declared`, as `importedMerge` hands it (TWIN)
+      j =
+        if a ? typeMerge && b ? functor then
+          a.typeMerge (
+            if b.functor ? __declared then builtins.removeAttrs b.functor [ "__declared" ] else b.functor
+          )
+        else
+          null;
       dropsA = j != null && joinRenames j a;
       dropsB = j != null && joinRenames j b;
       dropped =

@@ -1398,8 +1398,14 @@ Two rules that look like details and are not:
   `// { verify }` copy of either) is not completed, and the engine imports it where it is declared,
   enforcing its own `check`. Its `typeMerge`, and a module set's `substSubModules`, answer with its
   checks carried, so it keeps them where nixpkgs rebuilds it (a redeclaration, a stock submodule's
-  fixup, a freeform plane), and an ad-hoc `// { check }` override is carried as a check there. A
-  constant constructor's own record (`np.int`) has nothing to carry and crosses as itself. Its
+  fixup, a freeform plane), and an ad-hoc `// { check }` override is carried as a check there. Its
+  functor names it as the declaration (`functor.__declared`), as a door copy's does, so under
+  nixpkgs' `evalModules` a later closed return's join meets an earlier one's check: at each
+  declaration's top-level check, and over a module set at every depth. An element check inside a
+  nixpkgs container, a widened `enum`'s check inside a module set, and a met record redeclared by an
+  author are not met there (open defects). A
+  constant constructor's own record (`np.int`) has nothing to carry and crosses as itself, so a join
+  it receives is nixpkgs' own, and an earlier declaration's check is nixpkgs' drop. Its
   `verify` is read on the merged value and stated where a fold asks membership: in a v2 merge's
   `headError`, after its base's, as nixpkgs' `addCheck` states its check, so `np.either` / `np.oneOf`
   moves on to a member that admits the definitions; a non-v2 record is lifted into the v2 protocol,

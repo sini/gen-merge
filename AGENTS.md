@@ -150,9 +150,13 @@ Under nixpkgs' engine such a copy declared first is met by a later gen relation 
 `typeMerge`, derived or retained, meets the join with the declaration and closes a module-set
 declaration's `verify` on the merged value, den-hoag-s1um3); beside a later nixpkgs relation it is
 dropped as the raw copy is, by nixpkgs' later-operand rule. A foreign record (stating no
-`typeMergeRel`) is returned by `types.defineType` as itself, and a foreign module set comes back
-closed under its own rebuilds
-(`interface.rebuildClosed`), its checks carried through `substSubModules` and `typeMerge`. A
+`typeMergeRel`) comes back from `types.defineType` closed under its own rebuilds
+(`interface.rebuildClosed`), its checks carried through `substSubModules` and `typeMerge`, except a
+constant constructor's own record (`np.int`), which crosses as itself. The closed return's functor
+names it as the declaration (`functor.__declared`), so a later closed return's join meets it, at
+each declaration's top-level check and over a module set at every depth; `interface.importedMerge`
+hands gen's own fold the functor without that slot, since that fold owes every declaration by its
+debt. A
 completion a door returns as itself that states `verify` over a module set below it (gen-schema's
 `refined` over a container) faces nixpkgs' evaluation (`interface.rebuildClosed.door`,
 den-hoag-olrmz): its `check` is the verify's one-definition projection, its `merge` reads the
