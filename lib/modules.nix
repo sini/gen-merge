@@ -4564,6 +4564,36 @@ let
       in
       if imported == null then mergeLeaf else imported;
 
+  # Does the freeform fold `rawFold t` select a captured key's definitions by override priority, key-locally,
+  # `n` group steps below the plane's root? Only where the fold that runs is gen's own attribute container
+  # (`attrsOf`, `lazyAttrsOf`) as its constructor completed it (`mergeDefs.completed`, the house witness
+  # `threaded` reads), whose every key folds by `mergeDefs` (discharge, then `filterOverrides`). Below a declared
+  # group the group's value is an attrset the engine built (`buildModuleUnmatched`), folded by the element: an
+  # attribute container again, or `anything`, whose key arm is the same passes. Any other fold answers `false`:
+  # its override selection, if it has one, is its own. Reads types only, never a definition.
+  freeformKeyed =
+    t:
+    isAttrs t
+    && t ? mergeDefs
+    && isAttrs t.mergeDefs
+    && !(t.mergeDefs ? unchecked)
+    && !(t ? choose || t ? __threadedForeign)
+    && t ? carries.element
+    && (t.mergeDefs.container or null == "attrsOf" || t.mergeDefs.container or null == "lazyAttrsOf")
+    && t.mergeDefs == (t.mergeDefs.completed.mergeDefs or null);
+  freeformSelectsAt =
+    t: n:
+    if n == 0 then
+      freeformKeyed t
+    else
+      freeformKeyed t && freeformGroupSelects t.carries.element (n - 1);
+  freeformGroupSelects =
+    e: n:
+    if isAttrs e && e ? mergeDefs && e.mergeDefs == strategies.anything.mergeDefs then
+      n == 0 || freeformGroupSelects e (n - 1)
+    else
+      freeformSelectsAt e n;
+
   # ── the merge fold (shared by evalModuleTree options + the collection strategies) ──
   # Public (loc,type,rawDefs) contract — NON-short-circuiting, and the pre-kernel fold's value on every
   # input whose type is a type, so every existing consumer of the exported `mergeDefs` escape hatch
@@ -9699,6 +9729,30 @@ let
               { }
             else
               let
+                # the type the value fold runs (`freeformConfigCold`), restated here so no evaluation pays a binding for it
+                folding =
+                  if interface.canNest freeform then interface.homedAt "evalModuleTree" prefix freeform else freeform;
+                # a key's override selection, replayed over the very definitions the value fold reads at that key
+                selected =
+                  us:
+                  if !(freeformSelectsAt folding (length (head us).path - 1)) then
+                    {
+                      priority = null;
+                      priorityState = "unobservable";
+                    }
+                  else if all (u: !(u.value ? _type)) us then
+                    {
+                      priority = defaultPriority;
+                      priorityState = "observed";
+                    }
+                  else
+                    let
+                      p = (filterOverridesRich (concatMap (u: dischargeIn u.file u.value) us)).highestPrio;
+                    in
+                    {
+                      priority = p;
+                      priorityState = if p == null then "noDefinition" else "observed";
+                    };
                 byPath = builtins.groupBy (u: showOption u.path) realized.unmatched;
                 nest =
                   rs:
@@ -9727,12 +9781,16 @@ let
               nest (
                 map (us: {
                   rest = (head us).path;
-                  record = {
-                    defs = map (u: { inherit (u) file; }) us;
-                    winners = null;
-                    priority = null;
-                    defaulted = null;
-                  };
+                  record =
+                    let
+                      s = selected us;
+                    in
+                    {
+                      defs = map (u: { inherit (u) file; }) us;
+                      winners = null;
+                      inherit (s) priority priorityState;
+                      defaulted = null;
+                    };
                 }) (builtins.attrValues byPath)
               );
           # Warm: the freeform provenance layer rides the same reuse decision as its config layer.

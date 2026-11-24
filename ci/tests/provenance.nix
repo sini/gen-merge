@@ -184,7 +184,8 @@ in
       expected = {
         defs = [ { file = "F"; } ];
         winners = null;
-        priority = null;
+        priority = 100;
+        priorityState = "observed";
         defaulted = null;
       };
     };
@@ -379,7 +380,7 @@ in
         knownWinnerFile = "F";
         knownPriority = 100;
         extraDefs = [ { file = "F"; } ];
-        extraPriority = null;
+        extraPriority = 100;
       };
     };
   };

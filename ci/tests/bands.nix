@@ -231,10 +231,14 @@ in
           priority = 1500;
           defaulted = true;
         };
+        # an observed freeform leaf moves at its band (den-hoag-0g61j); the unobservable reason is the build's cell
         free = {
           scope = "c";
           loc = [ "free" ];
-          reason = "unset: freeform";
+          band = "set";
+          priority = 100;
+          winners = null;
+          value = "f";
         };
       };
     };

@@ -444,10 +444,23 @@ let
   bandedLeaves =
     scope: result:
     let
-      freeformLeaf = loc: {
-        inherit scope loc;
-        reason = "unset: freeform";
-      };
+      # A freeform leaf is classified by the state its record publishes: an observed priority bands as a declared
+      # leaf's does, a key with no surviving definition moves nothing, and a fold whose selection gen cannot
+      # observe is UNOBSERVABLE (`unset: freeform`), never read as empty.
+      freeformLeaf =
+        loc: p:
+        if p.priorityState == "observed" then
+          leaf loc p
+        else if p.priorityState == "noDefinition" then
+          {
+            inherit scope loc;
+            reason = "unset: no definition";
+          }
+        else
+          {
+            inherit scope loc;
+            reason = "unset: freeform";
+          };
       # Never classified through `winners`: its order pass forces each winning VALUE to WHNF
       # (the order marker test), so a declared `default = throw …` would fire. `defs` and `priority` force
       # only the definitions' wrappers.
@@ -488,7 +501,7 @@ let
           if decl != null && (decl._type or null) == "option" then
             leaf at p
           else if decl == null && (p.winners or { }) == null then
-            freeformLeaf at
+            freeformLeaf at p
           else
             walk (if decl == null then { } else decl) at p
         );
