@@ -3694,8 +3694,10 @@ let
   # the constructor. So the record is returned with every check it states kept, its rebuilds answering it again with
   # the same carriage gen's engine gives a declaration list (`carryBy` over the record, `carriedAtDepth` for a module
   # set's elements): the carried record states its own check, conjoined, never overwritten. A record stating no module
-  # set is closed under `typeMerge`, its rebuild carrying only its own check and `verify`; a rebuild that IS the record
-  # (`kept`) carries nothing, and a constant constructor's own record crosses as itself. A `verify` is read on the merged
+  # set is closed under `typeMerge`, its join the meet of every declaration it folded, its own and each partner's that
+  # names itself in its functor (`__declared`); a rebuild that IS the record (`kept`) and meets no partner carries
+  # nothing, and a constant constructor's own record crosses as itself (a join it receives is nixpkgs' own, where a
+  # partner's check is nixpkgs' drop, ADR-0039 "Not covered"). A `verify` is read on the merged
   # value, as gen's own fold reads one (`checked`) and as the stock-host guard reads one (`guardedOption`): a definition
   # alone is not the value it refines, and it is stated where a fold asks membership (`verifiedMerge`).
   rebuildClosed = {
@@ -3735,8 +3737,11 @@ let
             top: r:
             let
               c =
-                if moduleSet || !top then
+                if moduleSet then
                   carryBy false o r
+                # a join stating no module set is already the meet of the declarations it folded (`typeMerge`, below)
+                else if !top then
+                  r
                 # a top record stating no module set is the caller's, its check stated where nixpkgs' fold reads it
                 # (den-hoag-v4cw1)
                 else if isV2 r then
@@ -3775,16 +3780,36 @@ let
                 { }
             )
             // {
+              # a join owes every declaration it has folded (ADR-0039 THE MEET): this record's own, and each partner's,
+              # which nixpkgs hands over only as a functor, so the partner is the declaration its functor names
+              # (`__declared`, as `carriedCopy` states one). Over a module set the join carries them at every depth
+              # (`carriedAtDepth`); otherwise it is their meet, each owed relative to its own parameters where the join
+              # widens them (`metWith`), never the accumulator's check, and the met record keeps them at every later
+              # join it receives
               typeMerge =
                 f:
                 let
                   j = r.typeMerge f;
+                  dd = if isAttrs f && f ? __declared then [ f.__declared ] else [ ];
                 in
-                if j == null || !moduleSet && !(t ? verify) && self.kept t == self.kept j then
+                if j == null || dd == [ ] && !moduleSet && !(t ? verify) && self.kept t == self.kept j then
                   j
+                else if moduleSet then
+                  close false (carriedAtDepth true ([ r ] ++ dd) j)
                 else
-                  close false (if moduleSet then carriedAtDepth true [ r ] j else j);
-            };
+                  close false (metWith.core false j ([ o ] ++ dd));
+            }
+            # the return names itself as the declaration, so a partner's join receives its check (`typeMerge`, above)
+            // (
+              if top && isAttrs (r.functor or null) then
+                {
+                  functor = r.functor // {
+                    __declared = o;
+                  };
+                }
+              else
+                { }
+            );
         in
         close true t;
     # WHETHER A REBUILD DROPS NOTHING THE RECORD STATES (den-hoag-dw8d3 F2): `kept t == kept j`, the rebuild `j` IS the
