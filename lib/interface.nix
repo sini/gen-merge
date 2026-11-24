@@ -3193,13 +3193,16 @@ let
         then
           builtins.seq (importedRehomeAt door loc t) (
             homedAt door loc (
-              fixed
-              // {
-                check = {
-                  __functor = _: x: fixed.check x && t.check x;
-                  isV2MergeCoherent = true;
-                };
-              }
+              if t ? substructure.mount then
+                fixed
+              else
+                fixed
+                // {
+                  check = {
+                    __functor = _: x: fixed.check x && t.check x;
+                    isV2MergeCoherent = true;
+                  };
+                }
             )
           )
         else
