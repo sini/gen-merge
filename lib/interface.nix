@@ -5956,7 +5956,10 @@ let
   # record's `merge` itself, by APPLYING it: a nesting fold's export publishes its `merge` as a functor record whose
   # function answers its own `nestedEvaluation`'s `config`, and whose `nestedEvaluation` is the fold over the export's
   # accessor answering the child whole (the export, below). The route applies that function to the record with its
-  # evaluation answering whole, so the child served is, by construction, the one the `merge` a caller applies makes.
+  # evaluation answering the child's own `config` carrying the whole evaluation under one key, and serves what the
+  # function returns with that key removed: the value is, by construction, the one the `merge` a caller applies
+  # serves, whatever the function does with the config it reads, and the provenance is the evaluation the carried
+  # key names (den-hoag-t5ndo spec v3, arm (ii)).
   # Nothing is compared and no position is read (den-hoag-oeygp criterion (4), den-hoag-i01nx): a record carrying
   # another record's `merge` (by `//`, `intersectAttrs`, a restatement or a door's rebuild) is served that `merge`'s
   # child, which is what its `merge` serves; a `merge` written over the export, or a `merge` record whose function no
@@ -5979,14 +5982,31 @@ let
     else
       let
         # the fold refuses a definition outside its domain first, in the value path's words (`refusingOutside`)
-        # the child is taken THROUGH the merge's own application, over its record with the evaluation answering
-        # whole: a `merge` record whose applied function no longer reads its evaluation answers no record
-        r0 = m.__functor (
-          m // { nestedEvaluation = l: d: { config.__evalNestedRecord = m.nestedEvaluation l d; }; }
+        # the child is taken THROUGH the merge's own application: its function reads an evaluation whose `config` is
+        # the child's own with the whole evaluation carried under `__evalNestedRecord`; a function that no longer
+        # reads its evaluation, or drops or rebinds the key, answers no evaluation and is refused by name
+        # `result`, not a new name: every identifier is a process-wide symbol (spec v3 lever, -2 B / Det -32 B)
+        result = m.__functor (
+          m
+          // {
+            nestedEvaluation =
+              l: d:
+              let
+                e = m.nestedEvaluation l d;
+              in
+              e
+              // {
+                config = e.config // {
+                  __evalNestedRecord = e;
+                };
+              };
+          }
         ) loc defs;
-        r = r0.__evalNestedRecord;
+        r = result.__evalNestedRecord;
       in
-      if !(isAttrs r0 && r0 ? __evalNestedRecord) then
+      if
+        !(isAttrs result && result ? __evalNestedRecord && isAttrs r && r ? config && r ? provenance)
+      then
         refuse "has a `merge' rewritten over its export (its applied function does not make its nested evaluation)"
       else if t ? check && !(all (d: t.check d.value) defs) then
         builtins.seq r (
@@ -5998,7 +6018,8 @@ let
         )
       else
         {
-          inherit (r) config provenance;
+          config = builtins.removeAttrs result [ "__evalNestedRecord" ];
+          inherit (r) provenance;
         };
 
   # THE FOREIGN-PROTOCOL TYPE MERGE, which is where the engine reaches this half. A foreign partner

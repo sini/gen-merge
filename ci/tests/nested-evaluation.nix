@@ -454,6 +454,10 @@ in
         ];
       };
     };
+    # Under arm (ii) (den-hoag-t5ndo spec v3) provenance is read THROUGH the merge's own application, out of the config
+    # its function returns, so it is as strict as that config's WHNF: a freeform poisoned sibling, which the config's
+    # WHNF forces (`recursiveUpdate freeform declared`), throws on a provenance read too. Arms (i) and (iii) read
+    # provenance beside the function and serve it (`prov = [ true true ]`)
     test-g7-freeform-poison = {
       expr = {
         shell = [
@@ -471,8 +475,8 @@ in
           false
         ];
         prov = [
-          true
-          true
+          false
+          false
         ];
       };
     };
@@ -724,6 +728,161 @@ in
         false
         false
       ];
+    };
+    # L7 (spec v3): hand edits of the library's own `merge` record, `userType // { merge = userType.merge // e; }`. The
+    # v2 gate's seven rows (its inst/l7x.nix): the route refuses by name, or serves what the edited `merge` serves.
+    # Arm (i) serves L7c / L7e / L7f silently (route != merge) and aborts uncatchably on L7g; arm (iii) serves six of
+    # the seven silently.
+    test-l7-merge-record-edits-refused-or-served-as-the-merge = {
+      expr =
+        let
+          m = userType.merge;
+          ed = e: userType // { merge = m // e; };
+          c =
+            self: l: d:
+            (self.nestedEvaluation l d).config;
+          rows = [
+            (ed { __functor = _: siblingType.merge; })
+            (ed { inherit (siblingType.merge) nestedEvaluation; })
+            (ed {
+              __functor =
+                self: l: d:
+                c self l d // { shell = "ninety-nine"; };
+            })
+            (ed {
+              __functor =
+                self: l: d:
+                builtins.removeAttrs (c self l d) [ "shell" ];
+            })
+            (ed {
+              __functor =
+                self: l: d:
+                let
+                  x = c self l d;
+                in
+                x // { b = x.shell; };
+            })
+            (ed {
+              __functor =
+                self: l: d:
+                let
+                  x = c self l d;
+                in
+                builtins.seq x.shell x;
+            })
+            (ed {
+              __functor =
+                self: l: d:
+                c self l (map (x: x // { value.shell = "five"; }) d);
+            })
+          ];
+          read =
+            x:
+            let
+              r = val (route x loc reg).config;
+              v = val (x.merge loc reg);
+            in
+            if r == "refused" then
+              "refused"
+            else if r == v then
+              "same"
+            else
+              "DIFFERENT";
+        in
+        if builtins.isAttrs m then map read rows else "the merge is not a functor record";
+      expected = [
+        "refused"
+        "same"
+        "same"
+        "same"
+        "same"
+        "same"
+        "same"
+      ];
+    };
+    # L7, arm (ii)'s own residue, PINNED NOT ENDORSED: a function observing its config's key set sees the carried key
+    # (L7h), and a function forging the key with another evaluation (L7l) is served its config minus the key with
+    # that evaluation's provenance. Each reads `DIFFERENT` (route != merge) on all three evaluators. Mapping every
+    # value, or rebuilding the config from named fields, drops or rebinds the key and is refused by name (L7j, L7k).
+    test-l7-arm-ii-residue-pinned = {
+      expr =
+        let
+          m = userType.merge;
+          ed = e: userType // { merge = m // e; };
+          c =
+            self: l: d:
+            (self.nestedEvaluation l d).config;
+          read =
+            x:
+            let
+              r = val (route x loc reg).config;
+              v = val (x.merge loc reg);
+            in
+            if r == "refused" then
+              "refused"
+            else if r == v then
+              "same"
+            else
+              "DIFFERENT";
+        in
+        if builtins.isAttrs m then
+          map read [
+            (ed {
+              __functor =
+                self: l: d:
+                let
+                  x = c self l d;
+                in
+                x // { n = builtins.length (builtins.attrNames x); };
+            })
+            (ed {
+              __functor =
+                self: l: d:
+                c self l d // { __evalNestedRecord = siblingType.merge.nestedEvaluation l d; };
+            })
+            (ed {
+              __functor =
+                self: l: d:
+                builtins.mapAttrs (_: _: 0) (c self l d);
+            })
+            (ed {
+              __functor =
+                self: l: d:
+                let
+                  x = c self l d;
+                in
+                {
+                  inherit (x) shell;
+                };
+            })
+          ]
+        else
+          "the merge is not a functor record";
+      expected = [
+        "DIFFERENT"
+        "DIFFERENT"
+        "refused"
+        "refused"
+      ];
+    };
+    # D1 (den-hoag-06010): the published `mkOptionType` door picks its arm by `rewritesCheck` (a function `!=`), so for
+    # a record carrying a sibling's `check` it hands Lix a differently shaped record than Nix and Determinate, and the
+    # route serves on Nix / Determinate and refuses on Lix. The arm-independent invariant is pinned here, identical on
+    # every evaluator: the route never serves a value its `merge` does not, and the `merge` serves the user's child.
+    test-d1-door-split-route-never-serves-a-different-value = {
+      expr =
+        let
+          x = gm.mkOptionType (userType // builtins.intersectAttrs { check = null; } siblingType);
+          r = val (route x loc reg).config;
+        in
+        {
+          invariant = r == "refused" || r == val (x.merge loc reg);
+          merge = who (x.merge loc reg);
+        };
+      expected = {
+        invariant = true;
+        merge = "user";
+      };
     };
   };
 }
