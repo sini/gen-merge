@@ -89,8 +89,9 @@ let
   # decides the function-ness of a definition or a default, so none takes nixpkgs' reading.
   inherit (builtins) isFunction;
   # `checkMarksAgree` (gen-types, the protocol's owner) reads the check class a constructor states: it selects the
-  # representation a rewritten nesting record crosses the import in, and never whether its check runs, which
-  # `rewritesCheck` and the inline spellings below decide (den-hoag-onuzv)
+  # representation a rewritten nesting record crosses the import in (here, and the published door's bare `merge`,
+  # `types.nix` `mkOptionType`), and never whether its check runs where a definition is merged, which `rewritesCheck`
+  # and the inline spellings below decide (den-hoag-onuzv)
   inherit (types) rewritesCheck witnessRecord checkMarksAgree;
 
   # THE THREAD MARKER (den-hoag-threadedforeign-substsubmodules-abort-srpix): what `threadedForeign`
@@ -881,11 +882,7 @@ let
         if t.check ? __verifyProjection then
           checkedFold (t // { check = t.check.__verifyProjection; }) (t.mergeDefs or leafFold)
         else
-          # the check runs either way; the fold under it is the class's own import fold (the bridged export)
-          # where the record's marks state one class, never the called form, which evaluates no nested tree
-          checkedFold t (
-            if checkMarksAgree t then t.merge or t.mergeDefs or leafFold else t.mergeDefs or leafFold
-          )
+          checkedFold t (t.mergeDefs or leafFold)
       )
     else if t._protoLeafMerge or false then
       null
@@ -9918,6 +9915,7 @@ in
     importedWrapped
     isOptionType
     rewritesCheck
+    checkMarksAgree
     stampOk
     keepStamp
     carriedCopy

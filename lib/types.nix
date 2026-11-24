@@ -475,6 +475,24 @@ let
           # pair is carried past it, so the completion re-ties no witness it did not derive (den-hoag-59gnz C1)
           ${if interface.rewritesCheck descriptor then "check" else null} = descriptor.check;
           ${if interface.rewritesCheck descriptor then "_checkWitness" else null} = descriptor._checkWitness;
+          # THE BARE MERGE IS THE CLASS'S (den-hoag-onuzv). A rewritten record whose marks state its class crossed the
+          # import in that class's representation, whose fold checks the rewritten `check`; the door carries that check
+          # past itself, and an engine applies it where it merges a definition (gen's `checkedFold`, nixpkgs'
+          # `mergeDefinitions`). So the published `merge`, called bare, checks by the constructor's own check, as the
+          # class's intact record's does, and as the record-as-itself it replaced applied none of the rewrite.
+          ${
+            if interface.rewritesCheck descriptor && interface.checkMarksAgree descriptor then
+              "mergeDefs"
+            else
+              null
+          } =
+            imported.mergeDefs // {
+              __functor =
+                _:
+                interface.checkedFold (
+                  descriptor // { check = descriptor._checkWitness; }
+                ) imported.mergeDefs.unchecked;
+            };
         }
       );
     in

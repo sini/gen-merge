@@ -75,6 +75,32 @@ let
     defAttrsOfGen = v: read "gen" (gt.attrsOf (gt.defineType r)) { k = v; };
   };
   readAll = r: v: builtins.mapAttrs (_: f: f v) (reads r);
+  # a published door's `merge` called bare, as a nixpkgs union or a caller calls it, away from an engine's check
+  bare =
+    Y: v:
+    if
+      (builtins.tryEval (
+        let
+          r =
+            Y.merge
+              [ "o" ]
+              [
+                {
+                  file = "d.nix";
+                  value = v;
+                }
+              ];
+        in
+        builtins.deepSeq r r
+      )).success
+    then
+      "served"
+    else
+      "refused";
+  # a non-nesting record whose check a lambda rewrote crosses the ordinary import, whose bare merge checks it
+  leafLambda = gt.attrsOf gt.int // {
+    check = v: (gt.attrsOf gt.int).check v && notTwo v;
+  };
   allAre = x: builtins.mapAttrs (_: _: x) (reads u);
 in
 {
@@ -93,6 +119,40 @@ in
     };
     # `{ a = 2; }` is a module value `u` serves and only the rewritten check refuses: RED wherever a mark stands in
     # for the check (the check record's own-ness read off the mark, or every check read as its record's own)
+    # THE BARE MERGE IS THE CLASS'S: the published door's `merge` called bare serves what the class's own record
+    # serves, and the rewritten check stays on the published `check` for the engines (the cell above). RED where the
+    # door's fold checks the rewrite (`{ a = 2; }` refused bare), and where every rewriting record loses its checked
+    # bare merge (the leaf, served)
+    test-bare-merge-is-the-class-s = {
+      expr =
+        builtins.mapAttrs
+          (_: door: {
+            functorOverride = bare (door functorOverride) { a = 2; };
+            fnEdit = bare (door fnEdit) { a = 2; };
+            functorOverrideCheck = (door functorOverride).check { a = 2; };
+            intact = bare (door u) { a = 2; };
+            npAddCheck = bare (door npAddCheck) { a = 2; };
+            leafLambda = bare (door leafLambda) { a = 2; };
+          })
+          {
+            mk = gm.mkOptionType;
+            types = gt.mkOptionType;
+          };
+      expected =
+        builtins.mapAttrs
+          (_: _: {
+            functorOverride = "served";
+            fnEdit = "served";
+            functorOverrideCheck = false;
+            intact = "served";
+            npAddCheck = "served";
+            leafLambda = "refused";
+          })
+          {
+            mk = null;
+            types = null;
+          };
+    };
     test-rewritten-check-runs = {
       expr = {
         functorOverride = readAll functorOverride { a = 2; };
