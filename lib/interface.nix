@@ -3955,9 +3955,13 @@ let
               else
                 doorRoleClosed (rolesMet null j0 (doorDebtView j) p);
           };
+        # `importedMerge` asked of a door return's retained relation (its author's join) rather than of its exported
+        # `typeMerge`, which meets the partner's roles: for a reader whose predicate is about the author's join alone
+        # (`lib/types.nix` `elementRelIn`'s override walk)
+        retainedMerge = a: b: importedMerge (a // { typeMerge = a.retainedRelation.typeMerge; }) b;
       in
       {
-        inherit doorDebtView doorRoleClosed;
+        inherit doorDebtView doorRoleClosed retainedMerge;
       };
     __functor =
       self: t:
@@ -6287,10 +6291,6 @@ let
   # A join the witness declines because it RENAMES an operand is still answered: it is the step's
   # carrier, and the one caller (`modules.nix` `relationMergeWithin`) meets it with every operand
   # (`rolesMet`, and `mergeTypesBy` → `metWith`), so the dropped check is owed again rather than refused.
-  # `importedMerge` asked of a door return's retained relation (its author's join, `retainedRelation.typeMerge`) rather
-  # than of its exported `typeMerge`, which meets the partner's roles: for a reader whose predicate is about the
-  # author's join alone (`lib/types.nix` `elementRelIn`'s override walk)
-  importedRetainedMerge = a: b: importedMerge (a // { typeMerge = a.retainedRelation.typeMerge; }) b;
   importedMerge =
     a: b:
     if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
@@ -10173,7 +10173,6 @@ in
     importedFold
     importedHeldAt
     importedMerge
-    importedRetainedMerge
     importedRawFold
     importedMergeReason
     joinRenames
