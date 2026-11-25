@@ -3993,138 +3993,164 @@ let
             isV2MergeCoherent = true;
           };
         };
-        b =
+        # what a record owes a value as an operand of a join, relative to its own parameters (`joined`); its base, its
+        # parameters and its tags are bound once per record, so no check call rebuilds them
+        owes =
+          t:
           let
-            p = importedPartner (t.functor or null);
+            b =
+              let
+                p = importedPartner (t.functor or null);
+              in
+              if isAttrs p && !(p ? typeMergeRel) && p ? typeMerge && p ? functor then
+                p.typeMerge p.functor
+              else if t ? typeMerge && t ? functor then
+                t.typeMerge t.functor
+              else
+                null;
+            # a non-v2 container base whose check is not its completion's witness is `t` again, whose check is the
+            # debt: `t`'s own parameters are its payload, judged by its constructor as its foreign protocol names one,
+            # as `metWith`'s `__stockCheck` judges a stock (`joined`); a base of no recognised name keeps its own
+            # membership
+            params =
+              isAttrs b
+              && !(b ? _checkWitness && b.check == b._checkWitness)
+              && !(isV2 b)
+              && (b.getSubModules or null) == null
+              && ((t.functor or { }).payload or null) ? elemType;
+            # an `attrTag`'s tags are held options, each declared type owed relative to its own parameters, as an
+            # element is met (den-hoag-yg7fo)
+            tags =
+              if ((t.functor or { }).name or null) == "attrTag" && (t.functor or { }) ? payload.tags then
+                builtins.mapAttrs (
+                  _: d: if isAttrs d && d ? type then owes d.type else _: true
+                ) t.functor.payload.tags
+              else
+                null;
           in
-          if isAttrs p && !(p ? typeMergeRel) && p ? typeMerge && p ? functor then
-            p.typeMerge p.functor
-          else if t ? typeMerge && t ? functor then
-            t.typeMerge t.functor
-          else
-            null;
-        # a non-v2 container base whose check is not its completion's witness is `t` again, whose check is the debt:
-        # `t`'s own parameters are its payload, judged by its constructor as its foreign protocol names one, as
-        # `metWith`'s `__stockCheck` judges a stock (`joined`); a base of no recognised name keeps its own membership
-        params =
-          isAttrs b
-          && !(b ? _checkWitness && b.check == b._checkWitness)
-          && !(isV2 b)
-          && (b.getSubModules or null) == null
-          && ((t.functor or { }).payload or null) ? elemType;
-        joined =
           if !(isAttrs b) || !(b ? check) then
-            o
+            t.check
           else
-            o
-            // {
-              check = {
-                # membership in the base judged at every depth: `b`'s own merge of the value as one definition, forced;
-                # an override base's head is its v2 merge's `headError`, as `eitherChosen` asks a v2 member, never its
-                # check, which is the debt
-                __functor =
-                  _: v:
+            # membership in the base judged at every depth: `b`'s own merge of the value as one definition, forced;
+            # an override base's head is its v2 merge's `headError`, as `eitherChosen` asks a v2 member, never its
+            # check, which is the debt
+            v:
+            let
+              member =
+                (
+                  if adHocChecked b then
+                    (b.merge.v2 {
+                      loc = [ "<base>" ];
+                      defs = [
+                        {
+                          file = "<base>";
+                          value = v;
+                        }
+                      ];
+                    }).headError == null
+                  else
+                    b.check v
+                )
+                && (
                   let
-                    member =
-                      (
-                        if adHocChecked b then
-                          (b.merge.v2 {
-                            loc = [ "<base>" ];
-                            defs = [
-                              {
-                                file = "<base>";
-                                value = v;
-                              }
-                            ];
-                          }).headError == null
-                        else
-                          b.check v
-                      )
-                      && (
-                        let
-                          r = builtins.tryEval (
-                            builtins.deepSeq (b.merge
-                              [ "<base>" ]
-                              [
-                                {
-                                  file = "<base>";
-                                  value = v;
-                                }
-                              ]
-                            ) true
-                          );
-                        in
-                        r.success && r.value
-                      );
-                  in
-                  if params then
-                    t.check v
-                    || !(
-                      let
-                        p = importedRehomeAt recognitionDoor null b;
-                        defs = [
+                    r = builtins.tryEval (
+                      builtins.deepSeq (b.merge
+                        [ "<base>" ]
+                        [
                           {
                             file = "<base>";
                             value = v;
                           }
-                        ];
-                        # the element-check precheck `metWith`'s `__stockCheck` states, asked first
-                        roles = statedRoles b;
-                        name = (b.functor or { }).name or null;
-                        r = builtins.tryEval (
-                          if roles ? alternatives then
-                            prelude.any (a: a.check v) roles.alternatives
-                          else if !(roles ? element) then
-                            true
-                          else if name == "nullOr" then
-                            v == null || roles.element.check v
-                          else if name == "listOf" then
-                            isList v && all (x: isAttrs x && x ? _type || roles.element.check x) v
-                          else if name == "attrsWith" then
-                            isAttrs v && all (x: isAttrs x && x ? _type || roles.element.check x) (builtins.attrValues v)
+                        ]
+                      ) true
+                    );
+                  in
+                  r.success && r.value
+                );
+            in
+            if params then
+              t.check v
+              || !(
+                let
+                  p = importedRehomeAt recognitionDoor null b;
+                  defs = [
+                    {
+                      file = "<base>";
+                      value = v;
+                    }
+                  ];
+                  # the element-check precheck `metWith`'s `__stockCheck` states, asked first
+                  roles = statedRoles b;
+                  name = (b.functor or { }).name or null;
+                  r = builtins.tryEval (
+                    if roles ? alternatives then
+                      prelude.any (a: a.check v) roles.alternatives
+                    else if !(roles ? element) then
+                      true
+                    else if name == "nullOr" then
+                      v == null || roles.element.check v
+                    else if name == "listOf" then
+                      isList v && all (x: isAttrs x && x ? _type || roles.element.check x) v
+                    else if name == "attrsWith" then
+                      isAttrs v && all (x: isAttrs x && x ? _type || roles.element.check x) (builtins.attrValues v)
+                    else
+                      true
+                  );
+                  verdict =
+                    if r.success && !r.value then
+                      member && p == null
+                    else if p == null then
+                      member
+                    else
+                      let
+                        j =
+                          if p.container == "either" then
+                            constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
                           else
-                            true
-                        );
-                        verdict =
-                          if r.success && !r.value then
-                            member && p == null
-                          else if p == null then
-                            member
-                          else
-                            let
-                              j =
-                                if p.container == "either" then
-                                  constructors.either (elemAt p.alternatives 0) (elemAt p.alternatives 1)
-                                else
-                                  constructors.${p.container} p.element;
-                            in
-                            if isV2 j then
-                              (
-                                let
-                                  result = j.merge.v2 {
-                                    loc = [ "<base>" ];
-                                    inherit defs;
-                                  };
-                                  x = builtins.tryEval (builtins.deepSeq result.value true);
-                                in
-                                (j.check v) && x.success && x.value
-                              )
-                            else
-                              j.check v
-                              && (
-                                let
-                                  x = builtins.tryEval (builtins.deepSeq (j.merge [ "<base>" ] defs) true);
-                                in
-                                x.success && x.value
-                              );
+                            constructors.${p.container} p.element;
                       in
-                      verdict
-                    )
-                  else
-                    !member || t.check v;
-                isV2MergeCoherent = true;
-              };
+                      if isV2 j then
+                        (
+                          let
+                            result = j.merge.v2 {
+                              loc = [ "<base>" ];
+                              inherit defs;
+                            };
+                            x = builtins.tryEval (builtins.deepSeq result.value true);
+                          in
+                          (j.check v) && x.success && x.value
+                        )
+                      else
+                        j.check v
+                        && (
+                          let
+                            x = builtins.tryEval (builtins.deepSeq (j.merge [ "<base>" ] defs) true);
+                          in
+                          x.success && x.value
+                        );
+                in
+                verdict
+              )
+            # a one-tag value under a tag `t` declares owes `t`'s own check and that tag's debt; a tag `t` does not
+            # declare is owed nothing and is not forced, since nixpkgs' join unions the declarations' tag sets
+            else if tags != null && isAttrs v && length (attrNames v) == 1 then
+              let
+                k = head (attrNames v);
+              in
+              !(tags ? ${k}) || t.check v && tags.${k} v.${k}
+            else
+              !member || t.check v;
+        joined =
+          let
+            check = owes t;
+          in
+          o
+          // {
+            check = {
+              __functor = _: check;
+              isV2MergeCoherent = true;
             };
+          };
         # `t`'s `verify`, stated on each rebuild this closure answers as `rebuildClosed`'s own closure states it
         # below the root (`rebuildClosed.verify`: a v2 merge reads it on the merged value in `headError`, where a
         # union choosing its member reads a rejection; a non-v2 one is lifted, its own check per definition).
