@@ -154,6 +154,16 @@ let
     };
   };
   st = spied.types;
+  # den-hoag-t5ndo 1b H1: a paired construction over the spied library, and one definition of it.
+  pairedSpied = spied.refusingSubmodulePaired null [ "config" ] { } [
+    { options.x = spied.mkOption { type = st.int; }; }
+  ];
+  pairedDefs = [
+    {
+      file = "d.nix";
+      value.x = 1;
+    }
+  ];
   sub = st.submodule { options.x = spied.mkOption { type = st.int; }; };
   spiedAt =
     type: defs:
@@ -712,6 +722,20 @@ let
           };
         }
       ]).type.whenEmpty.value.a;
+    # den-hoag-t5ndo 1b H1: one `evaluate` call, config and provenance read, is one evaluation; the result read
+    # twice is still one; the pair's typed merge beside it is a second (the runner's live control).
+    paired-eval-both =
+      let
+        r = pairedSpied.evaluate [ "o" ] pairedDefs;
+      in
+      builtins.deepSeq (map (d: d.file) r.provenance.x.defs) r.config.x;
+    paired-eval-reread =
+      let
+        r = pairedSpied.evaluate [ "o" ] pairedDefs;
+      in
+      builtins.deepSeq [ r.provenance.x.defs r.config ] (r.config.x + r.config.x);
+    paired-eval-control-typed-plus-evaluate =
+      (pairedSpied.type.merge [ "o" ] pairedDefs).x + (pairedSpied.evaluate [ "o" ] pairedDefs).config.x;
     # den-hoag-8qenh C17, den-hoag-d2o0g: a module that deep-forces its own `moduleType` regresses
     # without end, since that type's empty value holds the module again, one level deeper, as
     # nixpkgs' each `base` does. It dies on the call-depth channel on both engines, and is never

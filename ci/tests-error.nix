@@ -13984,6 +13984,57 @@ in
       };
     };
 
+    # ── den-hoag-t5ndo 1b H1: the paired construction refuses by the typed fold's own text ──
+    # `evaluate` reads the exported merge's own threaded arm, so outside the domain it refuses with that arm's named
+    # text on either projection, never the module reader's anonymous one, and the construction's own refusals are
+    # `refusingSubmodule`'s and `withArgs`'s. Read by TEXT: a restated site dropping the guard serves the module
+    # reader's refusal here, which a `tryEval` cannot tell apart.
+    flake.testsError.refusing-submodule-paired =
+      let
+        P = gm.refusingSubmodulePaired null [ "config" ] { } [
+          { options.a = gm.mkOption { default = 0; }; }
+        ];
+        outside =
+          P.evaluate
+            [ "users" "tux" ]
+            [
+              {
+                file = "d.nix";
+                value = 5;
+              }
+            ];
+      in
+      {
+        test-an-outside-definition-is-refused-by-the-typed-folds-text-on-config = {
+          expr = force outside.config;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `users\\.tux' has definitions `submodule' cannot consume \\(d\\.nix\\)$";
+          };
+        };
+        test-an-outside-definition-is-refused-by-the-typed-folds-text-on-provenance = {
+          expr = force outside.provenance;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `users\\.tux' has definitions `submodule' cannot consume \\(d\\.nix\\)$";
+          };
+        };
+        test-a-key-the-engine-never-supplies-is-refused-as-refusing-submodule-refuses-it = {
+          expr = force (gm.refusingSubmodulePaired null [ "pkgs" ] { } [ ]).type.refusedArgs;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `refusingSubmodule' refuses only a base module argument the evaluation itself supplies \\(.*\\); `pkgs' is not one";
+          };
+        };
+        test-a-refused-argument-is-refused-as-with-args-refuses-it = {
+          expr = force (gm.refusingSubmodulePaired null [ "config" ] { config = { }; } [ ]).type.refusedArgs;
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: `withArgs' supplies the base module argument `config' to a `submodule' that refuses ";
+          };
+        };
+      };
+
     # ── den-hoag-b7v1h: a stated key a foreign partner's `specialArgs` supply is refused at the join ──
     # A redeclaration beside a nixpkgs `submoduleWith` joins to nixpkgs' record, which carries no refused
     # set, so `typeMergeRel`'s foreign branch refuses by presence, in β's union words, whichever declaration

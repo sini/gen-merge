@@ -690,6 +690,79 @@ let
     else
       completeExport v
   ) checkedTypes;
+  refusingSubmodule =
+    stated:
+    if
+      stated != null
+      && !(
+        builtins.isAttrs stated && stated ? ctor && stated ? members && stated ? args && stated ? sealed
+      )
+    then
+      throw "gen-merge: `refusingSubmodule' takes the construction its module set is built from first (`null', or `{ ctor; members; args; sealed; }'), then the refused base module argument names, then the module set; got ${builtins.typeOf stated} first"
+    else if
+      stated != null
+      && (
+        !builtins.isString stated.ctor
+        || builtins.match "[^.]*" stated.ctor != null
+        || builtins.match "gen-merge[.].*" stated.ctor != null
+      )
+    then
+      throw "gen-merge: `refusingSubmodule' takes a stated constructor qualified in the stating library's namespace (`<library>.<name>', not `gen-merge.'), which its mint keeps; any other would be spelled as gen-merge's own"
+    else
+      keys: mods:
+      if !(builtins.isList keys) || !(builtins.all builtins.isString keys) then
+        throw "gen-merge: `refusingSubmodule' takes a list of base module argument names after the construction, then the module set; got ${builtins.typeOf keys}"
+      else if builtins.any (k: !(builtins.elem k core.baseArgNames)) keys then
+        throw "gen-merge: `refusingSubmodule' refuses only a base module argument the evaluation itself supplies (${
+          builtins.concatStringsSep ", " (map (k: "`${k}'") core.baseArgNames)
+        }); ${
+          builtins.concatStringsSep ", " (
+            map (k: "`${k}'") (builtins.filter (k: !(builtins.elem k core.baseArgNames)) keys)
+          )
+        } is not one, and a caller's value for it is the only one any module reads"
+      else
+        strategies.mkSubmodule false "submodule" (builtins.attrNames (
+          builtins.listToAttrs (
+            map (k: {
+              name = k;
+              value = null;
+            }) keys
+          )
+        )) stated { } mods;
+
+  # THE PAIRED CONSTRUCTION (den-hoag-t5ndo 1b H1): `refusingSubmodule stated keys mods`, its caller's base module
+  # args `args` applied through the type's own `withArgs`, returned beside an evaluator OF THAT ONE CONSTRUCTION.
+  # `evaluate loc defs` is the exported merge's own call, `type.mergeDefs.threaded` over the export bridge's child
+  # (`interface.exportBridge`), with that child's whole result `{ config; provenance; }` retained by the caller instead
+  # of its `config` alone. The site record and the domain guard are the threaded arm's own (`types.nix` `mkSubmodule`),
+  # never restated here, so the two cannot drift apart. It takes no type: it closes over the record built here, so a
+  # record edited, rebuilt (`withArgs`, a fix-up's `rebuild`), recarried or joined later is a different value with no
+  # evaluator, and nothing pairs it. Each `evaluate` call is ONE evaluation; a typed read of `type` is another, never
+  # shared with it.
+  refusingSubmodulePaired =
+    stated: keys: args: mods:
+    let
+      type = (refusingSubmodule stated keys mods).withArgs args;
+      # The export's accessor with its child's result wrapped, so the arm's `(ev.child site).config` is the whole
+      # result. Not `exportBridge // { … }`: it forwards every site to the export's own child unchanged.
+      retaining = {
+        inherit (core.interface.exportBridge) position;
+        child = site: { config = core.interface.exportBridge.child site; };
+      };
+    in
+    {
+      inherit type;
+      evaluate =
+        loc: defs:
+        # Outside the domain the arm refuses by name, as the typed fold does, on either projection.
+        let
+          r = type.mergeDefs.threaded retaining loc defs;
+        in
+        {
+          inherit (r) config provenance;
+        };
+    };
+
 in
 {
   # Portable-subset lint (README "Portable-subset lint") — statically flag modules using constructs
@@ -837,45 +910,7 @@ in
   # one (ADR-0013). A first operand that is neither is refused by name, at its own application, so a call
   # written before the operand existed (`refusingSubmodule keys mods`) fails where it is written. One name, not a second:
   # each root name is a thunk on every process that loads this library.
-  refusingSubmodule =
-    stated:
-    if
-      stated != null
-      && !(
-        builtins.isAttrs stated && stated ? ctor && stated ? members && stated ? args && stated ? sealed
-      )
-    then
-      throw "gen-merge: `refusingSubmodule' takes the construction its module set is built from first (`null', or `{ ctor; members; args; sealed; }'), then the refused base module argument names, then the module set; got ${builtins.typeOf stated} first"
-    else if
-      stated != null
-      && (
-        !builtins.isString stated.ctor
-        || builtins.match "[^.]*" stated.ctor != null
-        || builtins.match "gen-merge[.].*" stated.ctor != null
-      )
-    then
-      throw "gen-merge: `refusingSubmodule' takes a stated constructor qualified in the stating library's namespace (`<library>.<name>', not `gen-merge.'), which its mint keeps; any other would be spelled as gen-merge's own"
-    else
-      keys: mods:
-      if !(builtins.isList keys) || !(builtins.all builtins.isString keys) then
-        throw "gen-merge: `refusingSubmodule' takes a list of base module argument names after the construction, then the module set; got ${builtins.typeOf keys}"
-      else if builtins.any (k: !(builtins.elem k core.baseArgNames)) keys then
-        throw "gen-merge: `refusingSubmodule' refuses only a base module argument the evaluation itself supplies (${
-          builtins.concatStringsSep ", " (map (k: "`${k}'") core.baseArgNames)
-        }); ${
-          builtins.concatStringsSep ", " (
-            map (k: "`${k}'") (builtins.filter (k: !(builtins.elem k core.baseArgNames)) keys)
-          )
-        } is not one, and a caller's value for it is the only one any module reads"
-      else
-        strategies.mkSubmodule false "submodule" (builtins.attrNames (
-          builtins.listToAttrs (
-            map (k: {
-              name = k;
-              value = null;
-            }) keys
-          )
-        )) stated { } mods;
+  inherit refusingSubmodule refusingSubmodulePaired;
 
   # The priority subset (spec §1 / §7) — one override rule + two combinators.
   inherit (priority)
