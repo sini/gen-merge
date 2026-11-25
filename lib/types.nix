@@ -2673,8 +2673,10 @@ let
   # the door. A refusal names the FULL path — `mergeLeaf` reports through `showOption loc` — so a
   # conflict under a nested key names that key rather than the option root, which is the same
   # `loc ++ [ k ]` descent nixpkgs' `(attrsOf anything).merge` makes.
-  zgCoercible = d: d.value ? outPath || d.value ? __toString;
   mergeAnythingDefs =
+    let
+      isStringLike = d: d.value ? outPath || d.value ? __toString;
+    in
     loc: defs:
     if defs == [ ] then
       throw "gen-merge: anything: no definitions"
@@ -2685,14 +2687,17 @@ let
     # v`), folded by `mergeOneOption`: ONE definition is carried whole, never rebuilt per key; two or
     # more are refused, equal ones too; one mixed with a definition of any other type is refused as
     # conflicting types (den-hoag-z9m0f). The test is `isStringLike` on a set, spelled as the two `?`
-    # it reduces to (`?` is false on a non-set), so it forces no `outPath`. It is bound ONCE, as
-    # `zgCoercible` above, because a lambda literal here allocates a thunk on every call, i.e. per
-    # attrset node the fold visits (measured on Nix 2.36: a 2-definition, 81-node value read +81 thunks
-    # inline and +1 hoisted, against the arm's absence); a call to `isStringLike` would cost a thunk per
-    # definition per node. `builtins.any` and `core.mergeOneOption` are read in place because an
+    # it reduces to (`?` is false on a non-set), so it forces no `outPath`. It is bound ONCE, in
+    # `mergeAnythingDefs`' own `let` above, because a lambda literal here allocates a thunk on every
+    # call, i.e. per attrset node the fold visits (measured on Nix 2.36: a 2-definition, 81-node value
+    # read +81 thunks inline and +1 bound, against the arm's absence). Bound in the file's `let` it cost
+    # every evaluation that imports this file a thunk; bound here it costs one only where an `anything`
+    # fold runs. Its name, a predicate on a definition, is gen-prelude's `isStringLike` because that
+    # symbol is already interned: a new name costs its bytes in every evaluation that parses this file
+    # (den-hoag-z9m0f lever). A call to prelude's `isStringLike` would cost a thunk per definition per node. `builtins.any` and `core.mergeOneOption` are read in place because an
     # `inherit` binding is a thunk per import (measured, the z9m0f spec's cost table).
-    else if builtins.any zgCoercible defs then
-      if all zgCoercible defs then
+    else if builtins.any isStringLike defs then
+      if all isStringLike defs then
         core.mergeOneOption loc defs
       else
         throw "gen-merge: the option `${showOption loc}' has conflicting option types: a string-coercible set (a derivation, or a set with `outPath` or `__toString`) is defined beside a definition of another type"

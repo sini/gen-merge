@@ -16,7 +16,7 @@
 # The refusals' TEXTS are `ci/tests-error.nix`, `anything-string-coercible`; these cells pin verdicts and
 # the projections a carried value serves.
 #
-# RED: the arm reverted (the `zgCoercible` branch of `mergeAnythingDefs` removed) serves every `refused`
+# RED: the arm reverted (the string-coercible branch of `mergeAnythingDefs` removed) serves every `refused`
 # cell, throws in `throwing-*` and `tostring-*`, refuses `option-record-once`, and gives `whole = false`
 # in `function-carrying-once` on Nix and Determinate. Lix compares a rebuilt closure equal, so that one
 # cell cannot see the rebuild there; the `throwing-*` cells see it on all three.
