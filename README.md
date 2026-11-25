@@ -4025,7 +4025,7 @@ so the move is visible where a verdict alone reads the same. Each run prints one
 `REFUSAL <program> {…}` line per refusing row and a `REFUSALS <program> <n>` count, and `--fold`
 writes the texts from CI's three columns (a column log without the count line is refused, never read
 as none). A text other than the committed one is `REFUSAL-MOVED`, and a refusing row with none for
-the evaluator `UNRECORDED-REFUSAL`, each a disagreement whose cure is the fold in the same change. The
+the evaluator `UNRECORDED-REFUSAL`, each a disagreement whose cure, for a pinned evaluator, is the fold in the same change. The
 ratchet guard reads verdicts and perf only, so a moved text on an unchanged verdict needs no trailer.
 
 The register's perf is written from CI's own columns and nowhere else: `--write-baseline` keeps every

@@ -44,7 +44,7 @@
 # moved (a new message from a landing that did not yet fix it) then reads differently in the register, so the
 # move is visible. It is written as perf is, from CI's columns by `--fold` and never by `--write-baseline`, and
 # checked as perf is: a text other than the committed one is REFUSAL-MOVED, none committed for $ev
-# UNRECORDED-REFUSAL, each a disagreement whose cure is the fold. The ratchet reads verdicts and perf only, so a
+# UNRECORDED-REFUSAL, each a disagreement whose cure, for a pinned evaluator, is the fold. The ratchet reads verdicts and perf only, so a
 # text move on an unchanged verdict is never a fall.
 #
 # $mode "check": one line per disagreement and a summary · "perf": one `PERF <label> <json>` line per perf row,
