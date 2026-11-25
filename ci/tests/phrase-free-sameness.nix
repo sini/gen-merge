@@ -145,7 +145,7 @@ let
   # One check-rewritten copy of gen's submodule declared N times: from N = 3 the accumulator's kept record and the
   # next declaration hold two evaluations of one module set as their `emptyValue`, which one value no longer compares.
   # Both spellings of the rewrite, with no container and below gen's `attrsOf`, on gen's engine, and on nixpkgs'
-  # engine below gen's `attrsOf`: a valid value is served, and on gen's engine the rewrite's check still refuses.
+  # engine below gen's `attrsOf`: a valid value is served, and on either engine the rewrite's check still refuses.
   notTwo = v: !(v ? a && v.a == 2);
   rSub = gt.submodule { options.a = gm.mkOption { type = gt.int; }; };
   rewritten = {
@@ -209,6 +209,11 @@ let
     attrsOfAttrsOf = {
       t = x: gt.attrsOf (gt.attrsOf x);
       v = x: { k.j = x; };
+    };
+    # one `g` across the declarations: a post-fold reshape merges only with its own binding
+    postFold = {
+      t = gt.postFold (x: x);
+      v = x: x;
     };
   };
   containedN =
