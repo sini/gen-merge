@@ -2251,10 +2251,18 @@ let
                   )
                     r
                 then
+                  # ★ AN INCOHERENT v2 MEMBER OF A RE-HOMED NIXPKGS `either` IS REFUSED AS NIXPKGS' `either` REFUSES
+                  # IT (ADR-0039 rule (2), narrow application; Artemis 01M881JY, den-hoag-58ja3): pinned nixpkgs
+                  # coherence holds at the stock-host merge.v2 boundary with a gen member participating. The member
+                  # is judged by `adHocChecked`, gen's own rule, so one stating a module set keeps that rule's
+                  # exemption: gen folds such a record and no stock-owned merge.v2 refusal path exists for it, which
+                  # is what the exception requires. Those members (a module set, or a container over one, gen's or
+                  # nixpkgs') are HELD served as they are today (Artemis F-B, 2026-11-25), not because ADR-0039 b1
+                  # licenses them.
                   let
                     coh =
                       x:
-                      if isAttrs x && !(x.check.isV2MergeCoherent or false) && isV2 x && isAttrs (x.mergeDefs or { }) then
+                      if isAttrs x && adHocChecked x && isAttrs (x.mergeDefs or { }) then
                         x
                         // {
                           mergeDefs = (x.mergeDefs or { }) // {
@@ -3837,6 +3845,9 @@ let
                   close false (if moduleSet then carriedAtDepth true [ r ] j else j);
             };
         in
+        # a v2 module set re-closed with an incoherent `check` (`type // { check }`) keeps that check, so the
+        # re-close does not mark the override coherent and pinned nixpkgs' merge.v2 coherence still meets it
+        # (ADR-0039 rule (2), narrow application; Artemis 01M881JY, den-hoag-58ja3)
         (
           let
             closed = close true t;
