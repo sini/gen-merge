@@ -107,7 +107,7 @@
           # so no gate reading this program's exit or its line can be satisfied by it.
           cellBlocks="outer-options-read rename-cycle-read undeclared-gen-abort engine-option-names mt-regress
             own-check-reads candidate-modules phrase-cycle foreign-knot name-keyset cyclic-derive key-walk-wide
-            prefix-keyed identity-walk met-cost spine-cost staged-cost closure-walk empty-read-cost graph-cost reuse-cost"
+            prefix-keyed identity-walk met-cost spine-cost staged-cost closure-walk empty-read-cost graph-cost reuse-cost paired-eval"
           allBlocks="modules-sh nixos-bar hm-bar fp-bar ${pkgs.lib.concatStringsSep " " benches} $cellBlocks"
           tpsel_partial=0 tpsel_picked="" tpsel_skipped="" tpsel_selected=" "
           [ -z "''${TESTS_PROCESS_ONLY+x}" ] || tpsel_partial=1
@@ -677,15 +677,36 @@
           done
           endblk; fi
 
+          # den-hoag-t5ndo 1b H1: the paired construction's `evaluate` is ONE evaluation however much of its result is
+          # read, config and provenance alike; a typed read of the pair's `type` beside it is a SECOND, never shared.
+          if sel paired-eval; then blk paired-eval 3
+          evalArm paired-eval-both
+          [ "$rc" -eq 0 ] || die paired-eval-both "expected exit 0, got $rc"
+          [ "$val" = "1" ] || die paired-eval-both "expected value 1, got '$val'"
+          n=$(traced)
+          [ "$n" = "1" ] || die paired-eval-both "expected 1 evaluation for config and provenance, the spy counted $n"
+          evalArm paired-eval-reread
+          [ "$rc" -eq 0 ] || die paired-eval-reread "expected exit 0, got $rc"
+          [ "$val" = "2" ] || die paired-eval-reread "expected value 2, got '$val'"
+          n=$(traced)
+          [ "$n" = "1" ] || die paired-eval-reread "expected 1 evaluation for one result read twice, the spy counted $n"
+          # The live control: the typed merge and `evaluate` are two invocations, so two evaluations.
+          evalArm paired-eval-control-typed-plus-evaluate
+          [ "$rc" -eq 0 ] || die paired-eval-control-typed-plus-evaluate "expected exit 0, got $rc"
+          [ "$val" = "2" ] || die paired-eval-control-typed-plus-evaluate "expected value 2, got '$val'"
+          n=$(traced)
+          [ "$n" = "2" ] || die paired-eval-control-typed-plus-evaluate "the spy's control expected 2 evaluations, counted $n"
+          endblk; fi
+
           # 0/0 is a false pass: the runner must have executed every cell above.
           if [ "$tpsel_partial" = 0 ]; then
             [ "$tpsel_blkSeen" = "$(echo $cellBlocks | wc -w)" ] || die runner "ran $tpsel_blkSeen cell blocks, want $(echo $cellBlocks | wc -w)"
-            [ "$ran" = "92" ] || die runner "expected 92 evaluations, ran $ran"
-            echo "tests-process: 92 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+            [ "$ran" = "95" ] || die runner "expected 95 evaluations, ran $ran"
+            echo "tests-process: 95 cells, every exit read unpiped, every death on its named channel, every count read" > $out
           else
             [ "$ran" = "$tpsel_blkWant" ] || die runner "the selected blocks declare $tpsel_blkWant evaluations, ran $ran"
             [ "$(echo $tpsel_picked | wc -w)" = "$tpsel_n" ] && [ -n "$tpsel_picked" ] || die runner "selected $tpsel_n blocks ($tpsel_selected), ran:''${tpsel_picked:- none}"
-            echo "tests-process: PARTIAL — $ran of 92 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
+            echo "tests-process: PARTIAL — $ran of 95 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
           fi
         ''
         + ''

@@ -698,6 +698,18 @@ fixpoint-derived argument is clean by derivation, and `pureModule` becomes check
 trusted. The price is nixpkgs application parity for `args@`-capturing and bare-lambda modules, which
 is why the engine keeps the whole-set application and function modules stay dirty by default.
 
+### The paired construction — `refusingSubmodulePaired`
+
+`refusingSubmodulePaired stated keys args mods` makes ONE construction and returns it beside an evaluator of it:
+`{ type; evaluate; }`. `type` is `(refusingSubmodule stated keys mods).withArgs args`, every refusal of those two
+included. `evaluate loc defs` is the exported merge's own call, the type's threaded fold over the export bridge's
+child, with the child's whole result kept: `{ config; provenance; }`, where the typed merge returns `config` alone.
+`config` is the typed merge's value, and outside the type's domain both projections refuse with the typed fold's
+own text. `evaluate` takes no type: it closes over the record built here, so a record edited (`//`), rebuilt
+(`withArgs`, a container's or a fix-up's rebuild), recarried or joined later is a different value with no evaluator,
+and nothing pairs it with this one. Each `evaluate` call is one evaluation, however much of its result is read; a
+typed read of `type` beside it is a second, never shared with it. The typed merge stays a plain function.
+
 ### The `pureModule` contract
 
 ```nix
