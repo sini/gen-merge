@@ -2245,9 +2245,11 @@ let
                     { alternatives, ... }:
                     !((elemAt alternatives 0).check.isV2MergeCoherent or false)
                     && ((elemAt alternatives 0).merge or { }) ? v2
+                    && ((elemAt alternatives 0).getSubModules or null) == null
                     ||
                       !((elemAt alternatives 1).check.isV2MergeCoherent or false)
                       && ((elemAt alternatives 1).merge or { }) ? v2
+                      && ((elemAt alternatives 1).getSubModules or null) == null
                   )
                     r
                 then

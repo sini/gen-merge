@@ -14949,5 +14949,85 @@ in
             "gen"
           ]
       );
+
+    # ── A RE-HOMED NIXPKGS `either` / `oneOf` REFUSES AN AD-HOC v2 MEMBER BY GEN'S AD-HOC RULE (den-hoag-58ja3) ──
+    # The value plane (`tests/either-ad-hoc-rehome.nix`) pins that the union refuses, as the twin does; these pin WHICH
+    # refusal: gen's `adHocFold`, naming the member's type, in the twin's refusal family (nixpkgs'
+    # `checkV2MergeCoherence`), and not the union's own "no single `either' member accepts". A widened check admits the
+    # definition and the member's v2 merge rejects it. The adjacent negative is the same union over the member's own
+    # coherent check, whose own merge keeps its refusal.
+    flake.testsError.either-ad-hoc-rehome =
+      let
+        np = nixpkgsLib.types;
+        sub = t.submodule {
+          key = "either-ad-hoc-rehome-sub";
+          options.a = gm.mkOption {
+            type = np.int;
+            default = 0;
+          };
+          options.b = gm.mkOption {
+            type = np.int;
+            default = 0;
+          };
+        };
+        widen = ty: ty // { check = _: true; };
+        at =
+          ty: v:
+          builtins.deepSeq
+            (gm.evalModuleTree { } [
+              {
+                _file = "a.nix";
+                options.x = gm.mkOption { type = ty; };
+              }
+              {
+                _file = "b.nix";
+                x = v;
+              }
+            ]).config.x
+            null;
+        adHoc = d: {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `x' has a type `${d}' that uses an ad-hoc `type // \\{ check = \\.\\.\\.; \\}' override, which the v2 merge protocol refuses; state the check with `addCheck' instead$";
+        };
+      in
+      {
+        # a definition the union once served through the submodule
+        test-a-widened-member-refuses-a-definition-the-other-member-takes = {
+          expr = at (np.either (widen (np.listOf np.int)) sub) { a = 1; };
+          expectedError = adHoc "list of signed integer";
+        };
+        # a definition neither member's merge takes: the ad-hoc refusal, not the union's
+        test-a-widened-member-refuses-a-definition-no-member-takes-by-the-ad-hoc-rule = {
+          expr = at (np.either (widen (np.listOf np.int)) sub) 1.5;
+          expectedError = adHoc "list of signed integer";
+        };
+        test-a-widened-member-of-a-one-of-refuses-by-the-ad-hoc-rule = {
+          expr = at (np.oneOf [
+            (widen (np.listOf np.int))
+            sub
+          ]) 1.5;
+          expectedError = adHoc "list of signed integer";
+        };
+        # a module set nulled to state none, through a door, is judged as no module set
+        test-a-widened-nulled-module-set-through-derive-type-refuses-by-the-ad-hoc-rule = {
+          expr = at (np.either (gm.deriveType { } "either-ad-hoc-rehome" (
+            t.nullOr sub
+            // {
+              check = _: true;
+              getSubModules = null;
+            }
+          )) t.int) 1.5;
+          expectedError = adHoc "null or \\(submodule\\)";
+        };
+        # the adjacent negative: a definition the coherent member's check admits and its own merge rejects keeps that
+        # merge's refusal, not the ad-hoc one
+        test-control-the-coherent-member-keeps-its-own-merge-refusal = {
+          expr = at (np.either (np.listOf np.int) sub) [ "s" ];
+          expectedError = {
+            type = "ThrownError";
+            msg = "^A definition for option `x\\.\"\\[definition 1-entry 1\\]\"' is not of type `signed integer'\\. Definition values:\n- In `b\\.nix': \"s\"$";
+          };
+        };
+      };
   };
 }
