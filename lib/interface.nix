@@ -2240,9 +2240,37 @@ let
           let
             rebuilt =
               if r.container == "either" then
-                constructors.either (homedAt door loc (elemAt r.alternatives 0)) (
-                  homedAt door loc (elemAt r.alternatives 1)
-                )
+                if
+                  (
+                    { alternatives, ... }:
+                    !((elemAt alternatives 0).check.isV2MergeCoherent or false)
+                    && ((elemAt alternatives 0).merge or { }) ? v2
+                    ||
+                      !((elemAt alternatives 1).check.isV2MergeCoherent or false)
+                      && ((elemAt alternatives 1).merge or { }) ? v2
+                  )
+                    r
+                then
+                  let
+                    coh =
+                      x:
+                      if isAttrs x && !(x.check.isV2MergeCoherent or false) && isV2 x && isAttrs (x.mergeDefs or { }) then
+                        x
+                        // {
+                          mergeDefs = (x.mergeDefs or { }) // {
+                            headJudge = l: _: adHocFold x l [ ];
+                          };
+                        }
+                      else
+                        x;
+                  in
+                  constructors.either (coh (homedAt door loc (elemAt r.alternatives 0))) (
+                    coh (homedAt door loc (elemAt r.alternatives 1))
+                  )
+                else
+                  constructors.either (homedAt door loc (elemAt r.alternatives 0)) (
+                    homedAt door loc (elemAt r.alternatives 1)
+                  )
               else
                 constructors.${r.container} (homedAt door loc r.element);
           in
@@ -3809,7 +3837,15 @@ let
                   close false (if moduleSet then carriedAtDepth true [ r ] j else j);
             };
         in
-        close true t;
+        (
+          let
+            closed = close true t;
+          in
+          if moduleSet && isV2 t && !(t.check.isV2MergeCoherent or false) then
+            closed // { inherit (t) check; }
+          else
+            closed
+        );
     # WHETHER A REBUILD DROPS NOTHING THE RECORD STATES (den-hoag-dw8d3 F2): `kept t == kept j`, the rebuild `j` IS the
     # record `t` at every field a fold reads, `check`, `merge`, `nestedTypes` and `typeMerge` each one value with the
     # record's by the pointer of its slot (as `verifySlice` compares one, so every evaluator answers alike). No function
