@@ -450,7 +450,11 @@ in
   flake.tests.submodule-laziness = {
     test-the-witness-serves-nixpkgs-value = {
       expr = builtins.mapAttrs (_: a: gen a.read a.modules) witness;
-      expected = witnessExpected;
+      # gen's engine owns the witness's fold (den-hoag-fsgy9; ADR-0039 ledger, application note 2026-11-25): the
+      # `port` check a declaration authored is retained there; the reference row below keeps nixpkgs' 70000
+      expected = witnessExpected // {
+        freeformCheckDrop = "refused";
+      };
     };
     # the reference row: nixpkgs at the ci pin gives the values the witness row expects
     test-nixpkgs-gives-the-witness-values = {

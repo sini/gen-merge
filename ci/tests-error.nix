@@ -9813,6 +9813,29 @@ in
             msg = "^gen-merge: option `s' has definitions no single `either' member accepts [(]`submodule' rejects def[.]nix; `string' rejects def[.]nix[)]$";
           };
         };
+        # beside a union whose member is a DISTINCT module set: the declaration fold hosts the members' join, and the
+        # union keeps the refusal it gives declared once (den-hoag-fsgy9)
+        test-a-checked-submodule-as-a-union-member-beside-a-distinct-one-refuses-what-it-rejects = {
+          expr =
+            let
+              S = np.submodule { options.a = nixpkgsLib.mkOption { type = np.int; }; };
+              S2 = np.submodule {
+                options.a = nixpkgsLib.mkOption { type = np.int; };
+                options.b = nixpkgsLib.mkOption {
+                  type = np.int;
+                  default = 3;
+                };
+              };
+            in
+            opt [
+              (t.either (np.addCheck S not7) t.str)
+              (t.either (np.addCheck S2 not7) t.str)
+            ] { a = 7; };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: option `s' has definitions no single `either' member accepts [(]`submodule' rejects def[.]nix; `string' rejects def[.]nix[)]$";
+          };
+        };
       };
 
     # den-hoag-7gp66 P2: which message fires at gen-merge's doors — the options steps of
@@ -14120,6 +14143,108 @@ in
         test-a-rebuild-supplying-a-key-the-type-does-not-state-is-served-nixpkgs-engine-control = {
           expr = served (rejoin np { argand = 1; });
           expectedError = pin "served";
+        };
+      };
+
+    # ── den-hoag-fsgy9: a conflicting shorthand flag is refused where nixpkgs reads it ──
+    # A gen `refusingSubmodule` (flag true) redeclared beside a nixpkgs `submoduleWith { }` (flag false): the joined
+    # flag is nixpkgs' lazy refusal. The declaration fold only asks it (`../tests/fold-hosted-flag-ask.nix` holds the
+    # served `.name`), so merging a definition, or a declared default alone, still raises nixpkgs' own conflict, in both
+    # orders and whichever declaration states the default. Read by TEXT.
+    flake.testsError.fold-hosted-flag-ask =
+      let
+        stating = gm.refusingSubmodule null [ "config" ] [ ];
+        foreign = nixpkgsLib.types.submoduleWith { modules = [ ]; };
+        value =
+          ds: defs:
+          force
+            (gm.evalModuleTree { } (
+              lib.imap0 (i: d: {
+                _file = "${builtins.elemAt [ "a" "b" ] i}.nix";
+                options.x = gm.mkOption d;
+              }) ds
+              ++ defs
+            )).config.x;
+        oneDef = [
+          {
+            _file = "def.nix";
+            x = { };
+          }
+        ];
+        conflict = {
+          type = "ThrownError";
+          msg =
+            "^"
+            + prelude.escapeRegex "A submoduleWith option is declared multiple times with conflicting shorthandOnlyDefinesConfig values"
+            + "$";
+        };
+      in
+      {
+        test-a-definition-of-a-conflicting-flag-join-is-refused-gen-first = {
+          expr = value [
+            { type = stating; }
+            { type = foreign; }
+          ] oneDef;
+          expectedError = conflict;
+        };
+        test-a-definition-of-a-conflicting-flag-join-is-refused-foreign-first = {
+          expr = value [
+            { type = foreign; }
+            { type = stating; }
+          ] oneDef;
+          expectedError = conflict;
+        };
+        test-a-gen-default-of-a-conflicting-flag-join-is-refused-gen-first = {
+          expr =
+            value
+              [
+                {
+                  type = stating;
+                  default = { };
+                }
+                { type = foreign; }
+              ]
+              [ ];
+          expectedError = conflict;
+        };
+        test-a-gen-default-of-a-conflicting-flag-join-is-refused-foreign-first = {
+          expr =
+            value
+              [
+                { type = foreign; }
+                {
+                  type = stating;
+                  default = { };
+                }
+              ]
+              [ ];
+          expectedError = conflict;
+        };
+        test-a-foreign-default-of-a-conflicting-flag-join-is-refused-gen-first = {
+          expr =
+            value
+              [
+                { type = stating; }
+                {
+                  type = foreign;
+                  default = { };
+                }
+              ]
+              [ ];
+          expectedError = conflict;
+        };
+        test-a-foreign-default-of-a-conflicting-flag-join-is-refused-foreign-first = {
+          expr =
+            value
+              [
+                {
+                  type = foreign;
+                  default = { };
+                }
+                { type = stating; }
+              ]
+              [ ];
+          expectedError = conflict;
         };
       };
 

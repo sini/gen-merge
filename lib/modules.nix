@@ -398,7 +398,7 @@ let
           single = true;
         }
       else
-        v.type
+        interface.unhosted v.type
     else
       v.type;
   serveOptions =
@@ -995,6 +995,9 @@ let
         && !(builtins.isFunction (o.__typeSelf or null) && verifySlice o == verifySlice (o.__typeSelf null))
     )
     && !(interface.sameValue m o);
+  # The shared step hosts nothing: every caller of `mergeTypes` / `mergeTypesWithin`, the exported `typeMerge`
+  # included, is served the relation's own answer. The declaration fold hosts through a relation of its own
+  # (`hostedWithin` below, den-hoag-fsgy9).
   mergeTypesBy =
     relation: a: b:
     let
@@ -1044,6 +1047,9 @@ let
       ];
   mergeTypes = mergeTypesBy relationMerge;
   mergeTypesWithin = mergeTypesBy (relationMergeWithin null);
+  # the declaration fold's own step (`bandedLeaves`): the same relation, a foreign module set it joins hosted at every
+  # role before the step meets it (`interface.hostedRoles`, den-hoag-fsgy9); the shared element step stays neutral
+  hostedWithin = a: b: interface.hostedRoles a b (relationMergeWithin null a b);
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -1127,7 +1133,20 @@ let
   # the step with no thread, applied once (owner, 2026-10-30, D.4: the null step's per-step env equals main's on Lix, at
   # one load thunk)
   declaredPair = bandedLeaves null;
+  # The declaration fold hosts a foreign module set it joins: the root on the step's answer (this wrapper), a role on
+  # the relation's answer before the step's meet (`hostedWithin` at the two null-thread steps; `interface.hostedRoles`
+  # at the debt-thread steps and the veto, which answer without `mergeTypesBy`).
   bandedLeaves =
+    rewrites: earlier: later:
+    let
+      r = bandedLeavesCore rewrites earlier later;
+      m = r.merged;
+    in
+    if !(r ? merged) || !(isAttrs m) || m ? typeMergeRel then
+      r
+    else
+      r // { merged = interface.hostedModuleSet m; };
+  bandedLeavesCore =
     rewrites: earlier: later:
     let
       # the pre-flight, asked once for both the veto and the merge (`relationMerge` above)
@@ -1161,13 +1180,13 @@ let
             let
               tried = builtins.tryEval (
                 if rewrites == null then
-                  mergeTypesWithin later earlier
+                  mergeTypesBy hostedWithin later earlier
                 else
                   # a step owing a met accumulator's debt: the relation's answer met with the step's thread, unless the
                   # relation met it already (`replaced`)
                   (
                     let
-                      x = relationMergeWithin rewrites later earlier;
+                      x = interface.hostedRoles later earlier (relationMergeWithin rewrites later earlier);
                     in
                     if x == null then
                       null
@@ -1181,11 +1200,11 @@ let
             if tried.success then tried.value else null
           )
         else if rewrites == null then
-          mergeTypesWithin later earlier
+          mergeTypesBy hostedWithin later earlier
         else
           (
             let
-              x = relationMergeWithin rewrites later earlier;
+              x = interface.hostedRoles later earlier (relationMergeWithin rewrites later earlier);
             in
             if x == null then
               null
@@ -1200,7 +1219,7 @@ let
         # met as `relationMergeWithin` meets a `meets` answer: a roleless join at the top alone
         merged =
           let
-            r = veto.merged;
+            r = interface.hostedRoles earlier later veto.merged;
           in
           # a join taken past the witness (`holds`) is met holding each operand's fold; the word is spelled per
           # call, so a meet that does not hold allocates nothing for it

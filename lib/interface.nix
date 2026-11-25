@@ -2280,6 +2280,232 @@ let
       else
         t;
 
+  # ── A FOREIGN MODULE SET A FOLD STEP JOINS IS EVALUATED BY THE ENGINE THAT OWNS THE STEP (den-hoag-fsgy9) ──────────
+  # ADR-0039 THE MEET and Not covered: a nixpkgs merge function called by gen's engine is gen's evaluation. nixpkgs'
+  # join of two module sets is its `submoduleWith` over the concatenated modules, and that record's own merge evaluates
+  # the tree by nixpkgs' rule, which drops every authored inner check the redeclaration meets.
+  #  - The answer stays THAT record, unminted (ADR-0034): its functor, name, check, `getSubOptions`, `emptyValue` and
+  #    `headError` are nixpkgs'. It states the tree as gen's own submodule over the same payload (`nests`,
+  #    `mergeDefs`), so the engine folds the tree as a child of its own evaluation and every inner redeclaration
+  #    meets. The engine's nested-tree grammar reads nesting off the DECLARED record, so the tree cannot be supplied
+  #    later, where the record is homed.
+  #  - Its own `check` is owed whole: the witness states no check of the record's own construction (`null`), so every
+  #    reader that carries a rewritten check onto a nesting fold carries it once per definition (`modules.nix`
+  #    `threadedAs`, a container's `carriedElement`), and reading it builds nothing.
+  #  - Its called `merge` serves the same value, nixpkgs' `headError` kept, and the metadata's two value-bearing reads
+  #    (`configuration.config`, `configuration.options.<n>.value`) served behind that value.
+  #  - These keys are the engine's: the served option publishes nixpkgs' own (`unhosted`).
+  #  - An ad-hoc override (an incoherent check) keeps nixpkgs' fold, which refuses it by name (`adHocFold`).
+  hostedModuleSet =
+    m:
+    let
+      pl = m.functor.payload or null;
+    in
+    if
+      isAttrs m
+      && !(m ? typeMergeRel)
+      && !(m ? nests)
+      && (m.functor.name or null) == "submodule"
+      && isAttrs pl
+      && pl ? modules
+      # the joined flag is nixpkgs' lazy refusal where the operands disagree; asked only, so it stays where nixpkgs reads it
+      && (builtins.tryEval (pl.shorthandOnlyDefinesConfig or false)).value == true
+      && isAttrs m.merge
+      && m.merge ? v2
+      && (m.check.isV2MergeCoherent or false)
+    then
+      let
+        g = (constructors.submodule pl.modules).withArgs (pl.specialArgs or { });
+        v2 =
+          args:
+          let
+            v = m.merge.v2 args;
+            gv = g.merge args.loc args.defs;
+            c = v.valueMeta.configuration;
+          in
+          v
+          // {
+            value = gv;
+            valueMeta = v.valueMeta // {
+              configuration = c // {
+                config = gv;
+                options = builtins.mapAttrs (
+                  n: o: if isAttrs o && (o._type or null) == "option" then o // { value = gv.${n}; } else o
+                ) c.options;
+              };
+            };
+          };
+      in
+      m
+      // {
+        # a rebuild (the declaration list's fixup, a container's element) is hosted again
+        substSubModules = ms: hostedModuleSet (m.substSubModules ms);
+        inherit (g) nests mergeDefs;
+        _checkWitness = null;
+        merge = {
+          __functor =
+            self: loc: defs:
+            (self.v2 { inherit loc defs; }).value;
+          inherit v2;
+        };
+      }
+    else
+      m;
+  # The record as the option publishes it: nixpkgs' own keys (`modules.nix` `servedType`). A foreign record stating a
+  # tree is a hosted one: gen's own nesting type states its relation.
+  unhosted =
+    t:
+    if isAttrs t && t ? nests && !(t ? typeMergeRel) && (t.functor.name or null) == "submodule" then
+      removeAttrs t [
+        "nests"
+        "mergeDefs"
+        "_checkWitness"
+      ]
+    else
+      t;
+  # Does this record, or a role below foreign roles only, state a module set: a foreign one, or gen's nesting type.
+  hostedHoldsSet =
+    fuel: t:
+    isAttrs t
+    && (
+      isNesting t
+      || !(t ? typeMergeRel) && (t.functor.name or null) == "submodule"
+      ||
+        fuel > 0
+        && (
+          hostedHoldsSet (fuel - 1) (carriedAt "element" t)
+          || (
+            let
+              x = carriedAt "alternatives" t;
+            in
+            isList x && builtins.any (hostedHoldsSet (fuel - 1)) x
+          )
+        )
+    );
+  # A relation's answer hosted at its ROLES: a join nixpkgs forms below its own container or union (its `typeMerge`
+  # merges the role) is this step's join too. Only the declaration fold calls it (`modules.nix` `hostedWithin`, the
+  # debt-thread steps and the veto); the root is hosted on the fold step's answer (`bandedLeaves`). A role is hosted
+  # on the relation's answer, before the step's meet, so the meet carries the dropped checks over the hosted role as it
+  # carries them over any rebuild; a gen container's role arrives met by its own element step, and is met again where
+  # hosting rebuilds it (`hostedJoin`). Presence first: only a record stating a role (`functor.payload.elemType`) is
+  # walked, so a leaf's answer pays these tests and allocates nothing.
+  hostedRoles =
+    a: b: m0:
+    if
+      m0 == null
+      || !(isAttrs m0)
+      || !(m0 ? functor.payload.elemType)
+      || (m0.functor.name or null) == "submodule"
+      || m0 ? replaced
+    then
+      m0
+    else
+      hostedJoin importedTypeWalkFuel a b m0;
+  # A gen container rebuilt over a hosted role by its own `recarry` (ONLY A GEN RECORD'S `recarry` REBUILDS IT), as
+  # `completedElement` rebuilds one: the record its constructor completes, so its fold's witness is its own. Its
+  # published functor's rebuild is the export's, whose witness only `==` over closures ties back (evaluator-dependent).
+  hostedRecarried =
+    r: role: x:
+    if r ? recarry && r ? carries.${role} then
+      r.recarry (r.carries // { ${role} = x; })
+    else
+      rebuiltOverAt role x r;
+  # The answer `r` over operands `a` and `b`, hosted at every role where both operands state a module set, below the
+  # containers the engine threads through: nixpkgs' `attrsWith`, `listOf`, `nullOr` and `either` (the ones
+  # `importedRehomeAt` re-homes) and gen's own (`typeMergeRel`). A stock record carrying a copy, and any other
+  # container, keeps its own fold. A gen container is rebuilt by its own `recarry` (`hostedRecarried`) only where
+  # hosting changed its role (`sameValue`), over the hosted role met again with that role's operands (`metWith.core`,
+  # as `rolesMet` meets a rebuilt role): its relation's element step met the role before it was hosted, and THE MEET
+  # binds the record the fold serves. A stock container is rebuilt by its own constructor (`rebuiltOverAt`; nixpkgs'
+  # `either` by its functor's curried `type`, as its own `typeMerge` does), keeping the fields its fold reads that carry
+  # a check or a phrase. A union's member is hosted where it is a module set on both sides: a union of unions, or a
+  # copy over one, keeps its fold.
+  hostedJoin =
+    fuel: a: b: r:
+    let
+      name = r.functor.name or null;
+    in
+    if !(isAttrs r) then
+      r
+    else if name == "submodule" then
+      hostedModuleSet r
+    else if
+      fuel <= 0
+      || r ? carries && !(r ? typeMergeRel)
+      || !(name == "attrsWith" || name == "listOf" || name == "nullOr" || name == "either")
+    then
+      r
+    else
+      let
+        keep = x: if isAttrs x then x // builtins.intersectAttrs hostedKept r else r;
+        re = carriedAt "element" r;
+        ae = carriedAt "element" a;
+        be = carriedAt "element" b;
+        ra = carriedAt "alternatives" r;
+        aa = carriedAt "alternatives" a;
+        ba = carriedAt "alternatives" b;
+      in
+      if isAttrs re && hostedHoldsSet fuel ae && hostedHoldsSet fuel be then
+        (
+          let
+            he = hostedJoin (fuel - 1) ae be re;
+          in
+          if r ? typeMergeRel && sameValue he re then
+            r
+          else if r ? typeMergeRel then
+            hostedRecarried r "element" (
+              metWith.core false he [
+                ae
+                be
+              ]
+            )
+          else
+            keep (rebuiltOverAt "element" he r)
+        )
+      else if
+        isList ra
+        && isList aa
+        && isList ba
+        && builtins.any (i: hostedHoldsSet 0 (elemAt aa i) && hostedHoldsSet 0 (elemAt ba i)) [
+          0
+          1
+        ]
+      then
+        (
+          let
+            h = i: hostedJoin (fuel - 1) (elemAt aa i) (elemAt ba i) (elemAt ra i);
+          in
+          if r ? typeMergeRel && sameValue (h 0) (elemAt ra 0) && sameValue (h 1) (elemAt ra 1) then
+            r
+          else if r ? typeMergeRel then
+            hostedRecarried r "alternatives" (
+              builtins.genList (
+                i:
+                metWith.core false (h i) [
+                  (elemAt aa i)
+                  (elemAt ba i)
+                ]
+              ) 2
+            )
+          else
+            keep (
+              if name == "either" && isFunction (r.functor.type or null) then
+                r.functor.type (h 0) (h 1)
+              else
+                rebuiltOverAt "alternatives" (builtins.genList h 2) r
+            )
+        )
+      else
+        r;
+  hostedKept = {
+    check = null;
+    name = null;
+    description = null;
+    descriptionClass = null;
+    emptyValue = null;
+    deprecationMessage = null;
+  };
+
   # ── A VERIFY INSIDE A NIXPKGS SUBMODULE, READ WHERE NIXPKGS READS (den-hoag-dk6zg) ──────────────────────────
   # A stock nixpkgs submodule's nested evaluation reads each option's `check` alone, so a `//` copy declared inside
   # it is not read there. Its merge is kept, its headError untouched, and its value served with each option guarded
@@ -9849,6 +10075,9 @@ in
     importedAdmits
     importedRehome
     isNesting
+    hostedModuleSet
+    hostedRoles
+    unhosted
     forwardsModuleSet
     joinInStatedRelation
     joinCarriedInStatedRelation
