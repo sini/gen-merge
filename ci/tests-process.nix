@@ -107,7 +107,8 @@
           # so no gate reading this program's exit or its line can be satisfied by it.
           cellBlocks="outer-options-read rename-cycle-read undeclared-gen-abort engine-option-names mt-regress
             own-check-reads candidate-modules phrase-cycle foreign-knot name-keyset cyclic-derive key-walk-wide
-            prefix-keyed identity-walk met-cost spine-cost staged-cost closure-walk empty-read-cost graph-cost reuse-cost"
+            prefix-keyed identity-walk met-cost spine-cost staged-cost closure-walk empty-read-cost graph-cost reuse-cost
+            door-meet-level-cost"
           allBlocks="modules-sh nixos-bar hm-bar fp-bar ${pkgs.lib.concatStringsSep " " benches} $cellBlocks"
           tpsel_partial=0 tpsel_picked="" tpsel_skipped="" tpsel_selected=" "
           [ -z "''${TESTS_PROCESS_ONLY+x}" ] || tpsel_partial=1
@@ -547,6 +548,29 @@
           done
           endblk; fi
 
+          if sel door-meet-level-cost; then blk door-meet-level-cost 8
+          # den-hoag-1w6qr (ADR-0032): a door return's cost per level of depth, as the thunks per level between depth 1
+          # and 4 (`doorMeetLevelCost`). AC: nixpkgs' engine with the door return declared last, its met arm asked
+          # (THE MEET); JE, J and PD: gen's engine, where the override walk asks the door's retained relation
+          # (`interface.importedRetainedMerge`), never the arm. The bounds are the landed figures, in THUNKS, the same on
+          # Nix, Determinate and Lix. Main 3676a07 reads 173 / 3443 / 2868 / 7938, so the admitted residue over it is
+          # 283 / 9 / 9 / 6 a level, flat in depth (the base curves of JE, J and PD are not flat: that growth is main's).
+          # The door residue's JE and J read refused (`door-partner`'s RESIDUE cell), so their cost is the refusal's. An
+          # optimization lowers a bound in the same change; a rise is authorized only after a minimality attempt, and is
+          # re-anchored in the landing commit that makes it.
+          for bound in AC:true:456 JE:false:3452 J:false:2877 PD:true:7944; do
+            f=''${bound%%:*} rest=''${bound#*:}; want=''${rest%%:*} max=''${rest#*:}
+            thunksOf "door-meet-level-cost-$f-1"
+            [ "$val" = "$want" ] || die "door-meet-level-cost-$f-1" "expected value $want, got '$val'"
+            t1=$thunks
+            thunksOf "door-meet-level-cost-$f-4"
+            [ "$val" = "$want" ] || die "door-meet-level-cost-$f-4" "expected value $want, got '$val'"
+            per=$(((thunks - t1) / 3))
+            [ "$per" -le "$max" ] || die "door-meet-level-cost-$f-4" "a door return ($f) costs $per thunks per level, over its bound $max; ADR-0032: a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
+            echo "door-meet-level-cost $f: $per thunks per level (bound $max)"
+          done
+          endblk; fi
+
           if sel spine-cost; then blk spine-cost 2
           # den-hoag-y4w78 (ADR-0032): the spine's cost over a chain of `listOf` over a submodule, as the thunks to read
           # its module set at depth 30 over depth 1. A gen container answers its own `getSubModules = null` once the rest
@@ -680,12 +704,12 @@
           # 0/0 is a false pass: the runner must have executed every cell above.
           if [ "$tpsel_partial" = 0 ]; then
             [ "$tpsel_blkSeen" = "$(echo $cellBlocks | wc -w)" ] || die runner "ran $tpsel_blkSeen cell blocks, want $(echo $cellBlocks | wc -w)"
-            [ "$ran" = "92" ] || die runner "expected 92 evaluations, ran $ran"
-            echo "tests-process: 92 cells, every exit read unpiped, every death on its named channel, every count read" > $out
+            [ "$ran" = "100" ] || die runner "expected 100 evaluations, ran $ran"
+            echo "tests-process: 100 cells, every exit read unpiped, every death on its named channel, every count read" > $out
           else
             [ "$ran" = "$tpsel_blkWant" ] || die runner "the selected blocks declare $tpsel_blkWant evaluations, ran $ran"
             [ "$(echo $tpsel_picked | wc -w)" = "$tpsel_n" ] && [ -n "$tpsel_picked" ] || die runner "selected $tpsel_n blocks ($tpsel_selected), ran:''${tpsel_picked:- none}"
-            echo "tests-process: PARTIAL — $ran of 92 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
+            echo "tests-process: PARTIAL — $ran of 100 evaluations; ran:''${tpsel_picked:- none}; skipped:''${tpsel_skipped:- none}; NOT a plane pass" > $out
           fi
         ''
         + ''

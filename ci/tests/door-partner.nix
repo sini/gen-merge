@@ -600,6 +600,12 @@ let
         s.k = "s";
       };
     };
+    # E beside gen's own `either` under gen's container, so the pair's alternatives role is gen's union relation
+    # (`lib/types.nix` `eitherRelIn`), not a nixpkgs union read through the element arm
+    Eg = {
+      inherit (partners.E) p T vals;
+      G = gt.attrsOf (gt.either (gt.listOf np.int) np.str);
+    };
   };
   # a cell "<partner>/<word>/<value>": the word over G (gen's container) and P (the partner through door `d`); the
   # twin reads the word with nixpkgs' `T` for G and the partner raw
@@ -771,6 +777,35 @@ let
     "GGGP"
     "GPGP"
   ];
+  # a raw partner read beside G, and its nixpkgs twin (T for G, the partner raw): the order-aware join's cells
+  rawCells = readCells (c: gen (map (l: if l == "G" then c.f.G else c.f.p) c.w) c.v);
+  rawTwin = readCells (c: npe (map (l: if l == "G" then c.f.T else c.f.p) c.w) c.v);
+  # the door return P declared LAST beside a partner T whose check sits at a role nixpkgs' join drops (`addCheck`
+  # keeps its base's functor), read by nixpkgs' engine: its `mergeOptionDecls` folds the reversed list, so the last
+  # declaration's exported `typeMerge`, the door's met arm, is the one asked
+  pos = np.addCheck np.int (x: x > 0);
+  armShapes = {
+    # the element role
+    element = {
+      P = np.listOf np.int;
+      T = np.listOf pos;
+      bad = [ (-1) ];
+      good = [ 1 ];
+    };
+    # an ad-hoc override at the role the value does not reach (alternatives 1), the dropped check at the one it does
+    overrideBeside = {
+      P = np.either np.int (np.listOf shortList);
+      T = np.either pos (np.listOf (np.listOf np.int));
+      bad = -1;
+      good = 1;
+    };
+  };
+  armCells =
+    d:
+    builtins.mapAttrs (_: s: {
+      bad = npe [ s.T (d s.P) ] s.bad;
+      good = npe [ s.T (d s.P) ] s.good;
+    }) armShapes;
   # where the bare type is the later declaration, nixpkgs serves G's coherent join
   eitherResidueWords = [
     "PG"
@@ -1062,5 +1097,39 @@ in
             ]
         );
       };
+    # A RAW partner holding an ad-hoc override, declared before gen's container: nixpkgs' later declaration decides,
+    # so G's join serves the value nixpkgs serves (`lib/types.nix` `elementRelIn`, `eitherRelIn`, read under
+    # `decides`). RED (refused) where the container takes the raw partner's override-holding join whichever declaration
+    # came first, so the guard refuses it in both orders
+    test-a-raw-override-partner-declared-before-the-bare-type-reads-nixpkgs-value =
+      let
+        cells = map (w: "Eg/${w}/ok") eitherResidueWords ++ [ "nShort/GPPG/ok" ];
+      in
+      {
+        expr = rawCells cells;
+        expected = rawTwin cells;
+      };
+    # THE MEET through the door's met arm, read by nixpkgs' engine with the door return declared last: a value T's
+    # check rejects is refused where nixpkgs' twin (P raw) serves it, dropping the check, and a value every check
+    # accepts is served as the twin serves it. RED (served) where the door return's exported `typeMerge` answers the
+    # author's join unmet; `overrideBeside` is also RED where the meet is skipped because an override sits at a role
+    # beside the owed one
+    test-a-door-return-declared-last-owes-the-partner-check-under-nixpkgs-engine = {
+      expr = {
+        door = armCells door;
+        tdoor = armCells tdoor;
+      };
+      expected =
+        let
+          t = builtins.mapAttrs (_: s: {
+            bad = "REFUSED";
+            good = npe [ s.T s.P ] s.good;
+          }) armShapes;
+        in
+        {
+          door = t;
+          tdoor = t;
+        };
+    };
   };
 }

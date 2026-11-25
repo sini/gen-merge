@@ -377,6 +377,90 @@ let
           [ { new = 3; } ]
       )
     )).config.new;
+  # den-hoag-1w6qr: one point of a door return's per-level cost, the attrsOf/listOf depth `d`. `AC`: nixpkgs' engine, a
+  # stock `listOf^d (addCheck int (> 0))` declared before the door return of `listOf^d int`, the door's met arm asked
+  # (its exported `typeMerge` is the reversed fold's seed). `JE`, `J`, `PD`: gen's engine, the door return of a raw
+  # partner holding an ad-hoc override (at an alternatives role, the element role, or a payload-dependent functor)
+  # declared before gen's container. The value is admitted by every check; a cell reads whether it was served
+  # (`AC` and `PD` serve it; `JE` and `J` are the pinned door residue, refused: `door-partner`'s RESIDUE cell)
+  doorMeetLevelCost =
+    fam: d:
+    let
+      nl = import "${nixpkgsSrc}/lib";
+      np = nl.types;
+      t = m.types;
+      shortList = np.mkOptionType {
+        name = "listOf";
+        check = v: builtins.isList v && builtins.length v < 2;
+        inherit (np.listOf np.int) merge;
+        functor = {
+          name = "listOf";
+          wrapped = null;
+          payload.elemType = np.int;
+          type = _: shortList;
+          binOp =
+            a: b:
+            let
+              e = a.elemType.typeMerge b.elemType.functor;
+            in
+            if e == null then null else { elemType = e; };
+        };
+        nestedTypes.elemType = np.int;
+      };
+      overAt =
+        c: check: at: elem:
+        np.mkOptionType {
+          inherit (c elem) name merge;
+          inherit check;
+          functor = (c elem).functor // {
+            type = q: if at q then overAt c check at q.elemType else c q.elemType;
+          };
+          nestedTypes.elemType = elem;
+        };
+      fams = {
+        JE = {
+          P = np.either shortList np.str;
+          G = t.either (t.listOf np.int) np.str;
+          v = [ 2 ];
+        };
+        J = {
+          P = shortList;
+          G = t.listOf np.int;
+          v = [ 2 ];
+        };
+        PD = {
+          P = overAt np.listOf (v: builtins.isList v && builtins.length v < 2) (
+            q: (q.elemType.functor.payload.values or null) == [ "a" ]
+          ) (np.enum [ "a" ]);
+          G = t.listOf (np.enum [ "b" ]);
+          v = [ "a" ];
+        };
+      };
+      wrapW =
+        c: k: x:
+        if k == 0 then x else c (wrapW c (k - 1) x);
+      val = k: v: if k == 0 then v else { k = val (k - 1) v; };
+      wv = k: if k == 0 then 1 else [ (wv (k - 1)) ];
+      f = fams.${fam};
+      ac =
+        (nl.evalModules {
+          modules = [
+            { options.x = nl.mkOption { type = wrapW np.listOf d (np.addCheck np.int (x: x > 0)); }; }
+            { options.x = nl.mkOption { type = m.mkOptionType (wrapW np.listOf d np.int); }; }
+            { x = wv d; }
+          ];
+        }).config.x;
+      ge =
+        (eval [
+          { options.x = m.mkOption { type = m.mkOptionType (wrapW np.attrsOf d f.P); }; }
+          { options.x = m.mkOption { type = wrapW t.attrsOf d f.G; }; }
+          { x = val d f.v; }
+        ]).config.x;
+      r = builtins.tryEval (
+        if fam == "AC" then builtins.deepSeq ac (ac == wv d) else builtins.deepSeq ge (ge == val d f.v)
+      );
+    in
+    r.success && r.value;
   metCost =
     mode: n:
     let
@@ -791,6 +875,24 @@ let
     # den-hoag-1k5mi: a re-evaluated published module set's cost, read by the runner as thunks per child on
     # gen's engine against nixpkgs'.
   }
+  # den-hoag-1w6qr: a door return's cost per level, depth 1 to 5 (`door-meet-level-cost-<fam>-<d>`), read by the
+  # runner as thunks per level between depth 1 and 4
+  // builtins.listToAttrs (
+    builtins.concatMap
+      (
+        fam:
+        builtins.genList (i: {
+          name = "door-meet-level-cost-${fam}-${toString (i + 1)}";
+          value = doorMeetLevelCost fam (i + 1);
+        }) 5
+      )
+      [
+        "AC"
+        "JE"
+        "J"
+        "PD"
+      ]
+  )
   // builtins.listToAttrs (
     builtins.concatMap
       (
