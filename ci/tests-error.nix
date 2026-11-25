@@ -2417,6 +2417,81 @@ in
       in
       cells "anything" // cells "attrsOf" // cells "lazyAttrsOf";
 
+    # `anything` REFUSES A STRING-COERCIBLE SET DEFINED TWICE, OR BESIDE ANOTHER TYPE, as nixpkgs'
+    # `stringCoercibleSet` (`mergeOneOption`) and `commonType` do (den-hoag-z9m0f). The value cells
+    # (`ci/tests/anything-string-coercible.nix`) pin the verdicts against nixpkgs; these pin gen's words
+    # and the path they name. RED: the arm reverted served every one of them as a per-key union, whose
+    # `realize` overflows the stack on the derivation's self-reference (`all`), and the throwing-`outPath`
+    # pair surfaced the user's own throw rather than a refusal.
+    flake.testsError.anything-string-coercible =
+      let
+        drv = derivation {
+          name = "zg-p";
+          system = "x86_64-linux";
+          builder = "/bin/sh";
+        };
+        defs = vs: [ anyDecl ] ++ map (v: { o = v; }) vs;
+        twice = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' is defined multiple times, but may only be defined once$";
+        };
+        mixed = {
+          type = "ThrownError";
+          msg = "^gen-merge: the option `o' has conflicting option types: a string-coercible set \\(a derivation, or a set with `outPath` or `__toString`\\) is defined beside a definition of another type$";
+        };
+      in
+      {
+        test-equal-derivations-defined-twice-refused-by-name = {
+          expr = realize {
+            modules = defs [
+              drv
+              drv
+            ];
+          };
+          expectedError = twice;
+        };
+        # the refusal precedes any `outPath`: the user's throw never surfaces
+        test-throwing-outpath-twice-refused-before-forcing-it = {
+          expr = realize {
+            modules = defs [
+              (drv // { outPath = throw "zg-outpath"; })
+              (drv // { outPath = throw "zg-outpath"; })
+            ];
+          };
+          expectedError = twice;
+        };
+        test-nested-coercible-twice-names-the-full-path = {
+          expr = realize {
+            modules = defs [
+              { svc = drv; }
+              { svc = drv; }
+            ];
+          };
+          expectedError = {
+            type = "ThrownError";
+            msg = "^gen-merge: the option `o\\.svc' is defined multiple times, but may only be defined once$";
+          };
+        };
+        test-derivation-then-attrset-refused-as-conflicting-types = {
+          expr = realize {
+            modules = defs [
+              drv
+              { extra = 1; }
+            ];
+          };
+          expectedError = mixed;
+        };
+        test-attrset-then-derivation-refused-as-conflicting-types = {
+          expr = realize {
+            modules = defs [
+              { extra = 1; }
+              drv
+            ];
+          };
+          expectedError = mixed;
+        };
+      };
+
     # `anything` carries a value carrying `__mint` WHOLE, by `mergeLeaf` (lib/types.nix), so two
     # minted definitions are agree-or-refuse over the whole value and a conflict is named AT THE
     # OPTION. The rebuild it replaced recursed per key and refused at an inner one (`o.name`), or
