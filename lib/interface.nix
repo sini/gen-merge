@@ -3862,9 +3862,21 @@ let
         else
           { }
       );
-    # a gen container's element `r` rebuilt over its declared element `e`: the `verify` `e` states beyond its rebuild
-    # carried on it (a `// { verify }` copy's rebuild is its base's)
-    element = e: r: if e ? verify && isAttrs r then rebuildClosed.verify false e.verify r else r;
+    # a gen container's element `r` rebuilt over its declared element `e`: the check and the `verify` `e` states beyond
+    # its rebuild carried on it, since a `//` copy's rebuild is its base's (den-hoag-umpfd: nixpkgs' fixup rebuilds a gen
+    # container through this binding). The check is owed where `e` rewrote it (`rewritesCheck`, the witness pair) and,
+    # as `carriedAtDepth` owes one, wherever `e` is foreign, stating no witness; it rides as `carryBy` lays one, per
+    # definition, beside the rebuild's own. A `verify` is read on the merged value
+    element =
+      e: r:
+      let
+        c =
+          if (rewritesCheck e || !(e ? _checkWitness) && !(e ? typeMergeRel)) && isAttrs r then
+            carryBy false e r
+          else
+            r;
+      in
+      if e ? verify && isAttrs r then rebuildClosed.verify false e.verify c else c;
     # A DOOR'S RETURN FOR A RECORD NO MINT VOUCHES FOR, ITS `verify` ON THE MERGED VALUE (den-hoag-5f99v): a door
     # re-completing a record stating `verify` with no completion stamp (a nixpkgs record's `// { verify }` copy, or a
     # copy of a door's import) returns an export whose `check` is that `verify` read per definition and whose fold

@@ -181,6 +181,46 @@ let
       nixpkgsKeyed3 = onNixpkgs gt.attrsOf (x: { k = x; }) 3 r val;
       nixpkgsKeyed4 = onNixpkgs gt.attrsOf (x: { k = x; }) 4 r val;
     }) rewritten;
+  # ── A GEN CONTAINER OVER A REWRITTEN CHECK, UNDER NIXPKGS' ENGINE (den-hoag-umpfd) ─────────────────────────────
+  # nixpkgs' fixup rebuilds a declared gen container over its element (`substSubModules`), and a `//` copy's rebuild
+  # is its base's, so the container's rebuild carries the copy's check (`rebuildClosed.element`). Every container whose
+  # rebuild re-carries an element, N = 1..8: {a=1} and {a=3} served, {a=2} refused. Both gen rewrites, and nixpkgs'
+  # `addCheck` over nixpkgs' own submodule (a foreign copy, stating no witness).
+  copies = rewritten // {
+    foreignAddCheck = np.addCheck (np.submodule { options.a = nl.mkOption { type = np.int; }; }) notTwo;
+  };
+  containers = {
+    attrsOf = {
+      t = gt.attrsOf;
+      v = x: { k = x; };
+    };
+    lazyAttrsOf = {
+      t = gt.lazyAttrsOf;
+      v = x: { k = x; };
+    };
+    nullOr = {
+      t = gt.nullOr;
+      v = x: x;
+    };
+    listOf = {
+      t = gt.listOf;
+      v = x: [ x ];
+    };
+    attrsOfAttrsOf = {
+      t = x: gt.attrsOf (gt.attrsOf x);
+      v = x: { k.j = x; };
+    };
+  };
+  containedN =
+    r: w:
+    builtins.genList (
+      i:
+      map (a: onNixpkgs w.t w.v (i + 1) r { inherit a; }) [
+        1
+        2
+        3
+      ]
+    ) 8;
   # a forged `//` copy of gen's submodule departing only in `nestedTypes`, declared beside its honest base
   forged = gSub // {
     nestedTypes.freeformType = gt.int;
@@ -269,26 +309,32 @@ in
         nixpkgsKeyed4.k.a = 1;
       }) rewritten;
     };
-    # ... and on gen's engine the rewrite's check still refuses what it rejects
+    # ... and the rewrite's check still refuses what it rejects, on gen's engine and on nixpkgs' below gen's `attrsOf`
     test-a-rewritten-check-declared-three-and-four-times-still-refuses = {
-      expr =
-        builtins.mapAttrs
-          (
-            _: x:
-            builtins.removeAttrs x [
-              "nixpkgsKeyed3"
-              "nixpkgsKeyed4"
-            ]
-          )
-          (readN {
-            a = 2;
-          });
+      expr = readN { a = 2; };
       expected = builtins.mapAttrs (_: _: {
         bare3 = "REFUSED";
         bare4 = "REFUSED";
         keyed3 = "REFUSED";
         keyed4 = "REFUSED";
+        nixpkgsKeyed3 = "REFUSED";
+        nixpkgsKeyed4 = "REFUSED";
       }) rewritten;
+    };
+    # RED while a gen container's rebuild re-carries a copy's base alone: {a=2} served at every N
+    test-a-gen-container-over-a-rewritten-check-enforces-it-under-nixpkgs = {
+      expr = builtins.mapAttrs (_: r: builtins.mapAttrs (_: containedN r) containers) copies;
+      expected = builtins.mapAttrs (
+        _: _:
+        builtins.mapAttrs (
+          _: w:
+          builtins.genList (_: [
+            (w.v { a = 1; })
+            "REFUSED"
+            (w.v { a = 3; })
+          ]) 8
+        ) containers
+      ) copies;
     };
     # ★ THE STATED PRICE, pinned at the served surface: a forged copy and its honest base are one value, and in
     # either declaration order the merged type publishes the `nestedTypes` its module set decides and serves the

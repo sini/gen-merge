@@ -1780,12 +1780,7 @@ let
             m:
             listOf (
               if carriesSub element then
-                (
-                  if element ? verify then
-                    interface.rebuildClosed.element element ((subOf element).rebuild m)
-                  else
-                    (subOf element).rebuild m
-                )
+                interface.rebuildClosed.element element ((subOf element).rebuild m)
               else
                 element
             );
@@ -2004,12 +1999,7 @@ let
             m:
             attrsOfWith tyName (
               if carriesSub element then
-                (
-                  if element ? verify then
-                    interface.rebuildClosed.element element ((subOf element).rebuild m)
-                  else
-                    (subOf element).rebuild m
-                )
+                interface.rebuildClosed.element element ((subOf element).rebuild m)
               else
                 element
             );
@@ -2399,12 +2389,7 @@ let
             m:
             nullOr (
               if carriesSub element then
-                (
-                  if element ? verify then
-                    interface.rebuildClosed.element element ((subOf element).rebuild m)
-                  else
-                    (subOf element).rebuild m
-                )
+                interface.rebuildClosed.element element ((subOf element).rebuild m)
               else
                 element
             );
@@ -3270,12 +3255,7 @@ in
                   rebuild =
                     m:
                     if carriesSub element then
-                      postFold g (
-                        if element ? verify then
-                          interface.rebuildClosed.element element ((subOf element).rebuild m)
-                        else
-                          (subOf element).rebuild m
-                      )
+                      postFold g (interface.rebuildClosed.element element ((subOf element).rebuild m))
                     else
                       self;
                 };
