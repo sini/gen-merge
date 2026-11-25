@@ -3715,82 +3715,6 @@ let
   # alone is not the value it refines, and it is stated where a fold asks membership (`verifiedMerge`).
   # ── (prototype, den-hoag-xmoua v1) the door's role-meet helpers ──
   # a role holding a met record read as its root join, at every depth of the element and alternatives roles
-  doorRoot = x: if isAttrs x && x ? __meetJoin then doorRoot x.__meetJoin else x;
-  doorStrip =
-    x:
-    let
-      x1 = doorRoot x;
-      e = carriedAt "element" x1;
-      al = carriedAt "alternatives" x1;
-      y =
-        if !(isAttrs x1) then
-          null
-        else if e != null then
-          rebuiltOverAt "element" (doorStrip e) x1
-        else if al != null then
-          rebuiltOverAt "alternatives" (map doorStrip al) x1
-        else
-          null;
-    in
-    if isAttrs y then y else x1;
-  # an ad-hoc (v2-incoherent) override at the record or at any role below it, to the walk's fuel
-  doorIncoherent =
-    let
-      go =
-        fuel: x:
-        isAttrs x
-        && (
-          isV2 x && !(x.check.isV2MergeCoherent or false)
-          ||
-            fuel > 0
-            && (
-              let
-                e = carriedAt "element" x;
-                al = carriedAt "alternatives" x;
-              in
-              e != null && go (fuel - 1) e
-              || al != null && builtins.any (go (fuel - 1)) al
-              || builtins.any (o: isAttrs o && (o._type or null) == "option" && go (fuel - 1) (o.type or null)) (
-                builtins.attrValues (x.nestedTypes or { })
-              )
-            )
-        );
-    in
-    go importedTypeWalkFuel;
-  # a receiver's roles as the obligation their met records carry (`__meetOwed`), never their join's check (Q2 arm (a))
-  doorDebtView =
-    x:
-    let
-      e = carriedAt "element" x;
-      al = carriedAt "alternatives" x;
-      y =
-        if !(isAttrs x) then
-          null
-        else if e != null then
-          rebuiltOverAt "element" (doorDebtView e) x
-        else if al != null then
-          rebuiltOverAt "alternatives" (map doorDebtView al) x
-        else
-          null;
-      b = if isAttrs y then y else x;
-    in
-    if isAttrs x && x ? __meetOwed then b // { check = x.__meetOwed; } else b;
-  # the join a door returns, closed under nixpkgs' later rebuilds at its roles only (Q1 arm (iv)): no top check is carried
-  doorRoleClosed =
-    j:
-    j
-    // {
-      typeMerge =
-        f:
-        let
-          p = importedPartner f;
-          j0 = (doorStrip j).typeMerge f;
-        in
-        if j0 == null || !(isAttrs p) || false then
-          j0
-        else
-          doorRoleClosed (rolesMet null j0 (doorDebtView j) p);
-    };
   # the role meet, one definition read by the engine (lib/modules.nix) and both doors
   rolesMet =
     rewrites: r: a: b:
@@ -3977,6 +3901,64 @@ let
         if x == null then r else x
       );
   rebuildClosed = {
+    doorMeet =
+      let
+        doorRoot = x: if isAttrs x && x ? __meetJoin then doorRoot x.__meetJoin else x;
+        doorStrip =
+          x:
+          let
+            x1 = doorRoot x;
+            e = carriedAt "element" x1;
+            al = carriedAt "alternatives" x1;
+            y =
+              if !(isAttrs x1) then
+                null
+              else if e != null then
+                rebuiltOverAt "element" (doorStrip e) x1
+              else if al != null then
+                rebuiltOverAt "alternatives" (map doorStrip al) x1
+              else
+                null;
+          in
+          if isAttrs y then y else x1;
+        # a receiver's roles as the obligation their met records carry (`__meetOwed`), never their join's check (Q2 arm (a))
+        doorDebtView =
+          x:
+          let
+            e = carriedAt "element" x;
+            al = carriedAt "alternatives" x;
+            y =
+              if !(isAttrs x) then
+                null
+              else if e != null then
+                rebuiltOverAt "element" (doorDebtView e) x
+              else if al != null then
+                rebuiltOverAt "alternatives" (map doorDebtView al) x
+              else
+                null;
+            b = if isAttrs y then y else x;
+          in
+          if isAttrs x && x ? __meetOwed then b // { check = x.__meetOwed; } else b;
+        # the join a door returns, closed under nixpkgs' later rebuilds at its roles only (Q1 arm (iv)): no top check is carried
+        doorRoleClosed =
+          j:
+          j
+          // {
+            typeMerge =
+              f:
+              let
+                p = importedPartner f;
+                j0 = (doorStrip j).typeMerge f;
+              in
+              if j0 == null || !(isAttrs p) || false then
+                j0
+              else
+                doorRoleClosed (rolesMet null j0 (doorDebtView j) p);
+          };
+      in
+      {
+        inherit doorDebtView doorRoleClosed;
+      };
     __functor =
       self: t:
       if !(isAttrs t) then
@@ -4085,7 +4067,11 @@ let
                     );
                   accumulates = !moduleSet && builtins.any metIn (builtins.attrValues (r.nestedTypes or { }));
                   j0 = if accumulates && isAttrs p then (strip r).typeMerge f else r.typeMerge f;
-                  j = if j0 == null || moduleSet || !(isAttrs p) then j0 else rolesMet null j0 (doorDebtView r) p;
+                  j =
+                    if j0 == null || moduleSet || !(isAttrs p) then
+                      j0
+                    else
+                      rolesMet null j0 (rebuildClosed.doorMeet.doorDebtView r) p;
                 in
                 if j == null || !moduleSet && !(t ? verify) && self.kept t == self.kept j then
                   j
@@ -6301,6 +6287,10 @@ let
   # A join the witness declines because it RENAMES an operand is still answered: it is the step's
   # carrier, and the one caller (`modules.nix` `relationMergeWithin`) meets it with every operand
   # (`rolesMet`, and `mergeTypesBy` → `metWith`), so the dropped check is owed again rather than refused.
+  # `importedMerge` asked of a door return's retained relation (its author's join, `retainedRelation.typeMerge`) rather
+  # than of its exported `typeMerge`, which meets the partner's roles: for a reader whose predicate is about the
+  # author's join alone (`lib/types.nix` `elementRelIn`'s override walk)
+  importedRetainedMerge = a: b: importedMerge (a // { typeMerge = a.retainedRelation.typeMerge; }) b;
   importedMerge =
     a: b:
     if a ? typeMerge && b ? functor && importedDecidable a && importedDecidable b then
@@ -10043,7 +10033,7 @@ let
                 let
                   p = importedPartner f;
                 in
-                if isAttrs p then doorRoleClosed (rolesMet null j exported p) else j
+                if isAttrs p then rebuildClosed.doorMeet.doorRoleClosed (rolesMet null j exported p) else j
               )
             else
               meet false j [ f.__declared ] f.__declared
@@ -10075,8 +10065,12 @@ let
                 (
                   let
                     # the protocol's receiver is the declaration that decides (nixpkgs' later operand), so the relation is
-                    # asked as it (`lib/modules.nix` `relationMergeAs`)
-                    answer = (t.typeMergeRel.decides or t.typeMergeRel) partner;
+                    # asked as it (`lib/modules.nix` `relationMergeWithin`)
+                    answer =
+                      if t ? typeMergeRel.rewrites then
+                        t.typeMergeRel.rewrites true null partner
+                      else
+                        t.typeMergeRel partner;
                   in
                   # a foreign engine hands gen a FUNCTOR: a wrapper's check on the record it holds is
                   # invisible here, so a join the twin refuses (`twinRefuses`) is refused as the twin does
@@ -10179,6 +10173,7 @@ in
     importedFold
     importedHeldAt
     importedMerge
+    importedRetainedMerge
     importedRawFold
     importedMergeReason
     joinRenames

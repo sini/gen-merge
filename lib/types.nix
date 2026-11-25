@@ -800,7 +800,7 @@ let
   # `rewrites` (`lib/modules.nix` `relationMergeWithin`): a fold step owing a debt hands its thread to the relation, which
   # meets the element pair with the debt one role down (`core.readers`, `core.exports`) and says so (`rolesMet`): the step
   # descends once, never a role meet again after the relation's own element meet
-  # `decides` (`lib/modules.nix` `relationMergeAs`): this container is the LATER declaration, so it decides, as nixpkgs'
+  # `decides` (`lib/modules.nix` `relationMergeWithin`): this container is the LATER declaration, so it decides, as nixpkgs'
   # later-operand rule lets it; a raw partner's join is taken as the pair's only where it is not an ad-hoc override
   elementRelIn =
     decides: rewrites: embedding: name: rebuild: element: other:
@@ -836,12 +836,14 @@ let
           if other ? carries && (!(other ? retainedRelation) || partnerElem != null) then
             null
           else if other ? carries then
-            # a door return gen cannot read whole: its own answer is asked once, here; an answer stating an override
-            # is marked (`adHocChecked`, a name the library already interns) for the refusal below, which names it; no
-            # binding outside this arm, so no other pair pays
+            # a door return gen cannot read whole: its author's join is asked once, here, through the door's retained
+            # relation (`interface.importedRetainedMerge`), since the walk below asks only whether that join states an
+            # override and never reads the door's met roles; an answer stating one is marked (`adHocChecked`, a name the
+            # library already interns) for the refusal below, which names it; no binding outside this arm, so no other
+            # pair pays
             (
               let
-                j = (interface.importedMerge other (rebuild element)).merged or null;
+                j = (interface.importedRetainedMerge other (rebuild element)).merged or null;
                 go =
                   fuel: t:
                   isAttrs t
@@ -1775,7 +1777,6 @@ let
         typeMergeRel = {
           exact = true;
           __functor = _: (elementRel "listOf" listOf element);
-          decides = other: elementRelIn true null null "listOf" listOf element other;
           rewrites = decides: mkMerge: elementRelIn decides mkMerge null "listOf" listOf element;
         };
         # Descend to the element type under the positional placeholder segment. A container's module
@@ -1848,7 +1849,6 @@ let
       row = interface.embeddings.${tyName};
       define = defineEmbedded row;
       rel = elementRelIn false null row;
-      relDeciding = elementRelIn true null row;
     in
     element:
     let
@@ -2005,7 +2005,6 @@ let
         typeMergeRel = {
           exact = true;
           __functor = _: (rel tyName (attrsOfWith tyName) element);
-          decides = other: relDeciding tyName (attrsOfWith tyName) element other;
           rewrites = decides: mkMerge: elementRelIn decides mkMerge row tyName (attrsOfWith tyName) element;
         };
         # Descend to the element under the per-key placeholder segment, so an `attrsOf (submodule …)`
@@ -2399,7 +2398,6 @@ let
         typeMergeRel = {
           exact = true;
           __functor = _: (elementRel "nullOr" nullOr element);
-          decides = other: elementRelIn true null null "nullOr" nullOr element other;
           rewrites = decides: mkMerge: elementRelIn decides mkMerge null "nullOr" nullOr element;
         };
         # Pass straight through to the element, adding NO path segment. A nullable introduces no path
@@ -2453,51 +2451,52 @@ let
     );
   option = nullOr;
 
-  # `either a b`'s own relation over a partner that offers its member pair: both members merge
-  # pairwise or the pair refuses. Bound at file level, not inside `either`, so it costs a gen × gen
-  # pair no thunk per construction or per call.
-  eitherMemberwise =
-    decides: rewrites: a: b: other:
-    let
-      alts = interface.importedOffered "alternatives" other;
-    in
-    if alts == null || !(isList alts) || length alts != 2 then
-      { refused = "`either' and a partner that states no member pair"; }
-    else
-      let
-        at =
-          i: x: y:
-          if rewrites == null then
-            (if decides then core.mergeTypesDeciding else mergeElemTypes) x y
-          else
-            rewrites.exports decides (rewrites.readers rewrites (t: elemAt t.priorityBand i) (
-              d:
-              let
-                mkOrder = interface.carriedAt "alternatives" d;
-              in
-              if mkOrder == null then null else elemAt mkOrder i
-            )) x y;
-        left = at 0 a (head alts);
-        right = at 1 b (elemAt alts 1);
-      in
-      if left == null || right == null then
-        { refused = "`either' and `either', whose members do not merge pairwise"; }
-      else
-        {
-          merged = either left right;
-          ${if rewrites == null then null else "rolesMet"} = true;
-        };
-
-  # `either a b`'s relation, bound at file level as `eitherMemberwise` is. `decides` (`lib/modules.nix` `relationMergeAs`):
+  # `either a b`'s relation, bound at file level, not inside `either`, so it costs a gen × gen pair no thunk per
+  # construction. `eitherMemberwise`, its arm over a partner that offers its member pair (both members merge pairwise or
+  # the pair refuses), is bound in its `let` outside the lambda, so it is built once, never per call.
+  # `decides` (`lib/modules.nix` `relationMergeWithin`):
   # this union is the LATER declaration, so a raw partner's join holding an ad-hoc override at a member is not the
   # pair's (nixpkgs' later operand decides): the pair is joined memberwise, each member deciding, and the meet owes the
   # override's check (THE MEET). Where the partner is the later one its join stands and the override is refused by name
   eitherRelIn =
-    decides: a: b: other:
+    let
+      eitherMemberwise =
+        decides: rewrites: a: b: other:
+        let
+          alts = interface.importedOffered "alternatives" other;
+        in
+        if alts == null || !(isList alts) || length alts != 2 then
+          { refused = "`either' and a partner that states no member pair"; }
+        else
+          let
+            at =
+              i: x: y:
+              if rewrites == null then
+                (if decides then core.mergeTypesDeciding else mergeElemTypes) x y
+              else
+                rewrites.exports decides (rewrites.readers rewrites (t: elemAt t.priorityBand i) (
+                  d:
+                  let
+                    mkOrder = interface.carriedAt "alternatives" d;
+                  in
+                  if mkOrder == null then null else elemAt mkOrder i
+                )) x y;
+            left = at 0 a (head alts);
+            right = at 1 b (elemAt alts 1);
+          in
+          if left == null || right == null then
+            { refused = "`either' and `either', whose members do not merge pairwise"; }
+          else
+            {
+              merged = either left right;
+              ${if rewrites == null then null else "rolesMet"} = true;
+            };
+    in
+    decides: rewrites: a: b: other:
     if !(isAttrs other) || (keyOf other) != "either" then
       { refused = "`either' and `${nameOf other}'"; }
-    else if other ? carries then
-      eitherMemberwise decides null a b other
+    else if rewrites != null || other ? carries then
+      eitherMemberwise decides rewrites a b other
     else
       let
         foreignJoin = interface.joinInRebuiltPartner {
@@ -2627,17 +2626,10 @@ let
         # test for a gen partner sits here, so a gen × gen pair builds nothing for it.
         typeMergeRel = {
           exact = true;
-          __functor = _: eitherRelIn false a b;
-          # asked as the later declaration (`lib/modules.nix` `relationMergeAs`)
-          decides = other: eitherRelIn true a b other;
+          __functor = _: eitherRelIn false null a b;
           # a fold step owing a debt (`elementRelIn`'s `rewrites`): a gen partner's members are met with the debt there
           # (asked only of a gen partner, `lib/modules.nix` `relationMergeWithin`)
-          rewrites =
-            decides: mkMerge: other:
-            if keyOf other != "either" then
-              { refused = "`either' and `${nameOf other}'"; }
-            else
-              eitherMemberwise decides mkMerge a b other;
+          rewrites = decides: mkMerge: eitherRelIn decides mkMerge a b;
         };
         substructure = {
           # A union's members introduce no path level, so it declares nothing of its own — stated

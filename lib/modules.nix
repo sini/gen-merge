@@ -620,11 +620,10 @@ let
   # `decides`: `a` is the LATER declaration, the one nixpkgs' later-operand rule lets decide (`declaredPair`'s merge arm
   # below), so a relation's foreign arm does not hand the pair to an earlier partner's ad-hoc override (`lib/types.nix`
   # `elementRelIn`, `eitherRelIn`); every other entry asks with `false`, and a swapped pair's `a` is the earlier one
-  relationMergeWithin = relationMergeAs false;
-  relationMergeAs =
+  relationMergeWithin =
     decides: rewrites: a: b:
     if b ? wraps && interface.wrapsKeyOf b a then
-      relationMergeAs false rewrites b a
+      relationMergeWithin false rewrites b a
     else if a ? typeMergeRel then
       let
         # a gen container relation taking a step's debt meets its role pair with it, one descent (`rewrites`): a gen
@@ -639,8 +638,8 @@ let
             && (b ? carries || a ? carries.element)
           then
             a.typeMergeRel.rewrites decides rewrites b
-          else if decides && a ? typeMergeRel.decides then
-            a.typeMergeRel.decides b
+          else if decides && a ? typeMergeRel.rewrites then
+            a.typeMergeRel.rewrites true null b
           else
             a.typeMergeRel b;
       in
@@ -661,7 +660,7 @@ let
                   if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                     r
                   else
-                    rolesMet rewrites r a b
+                    interface.rolesMet rewrites r a b
                 )
                 (
                   if rewrites == null then
@@ -705,7 +704,7 @@ let
                   then
                     r
                   else
-                    rolesMet rewrites r a b
+                    interface.rolesMet rewrites r a b
                 )
                 (
                   if rewrites == null then
@@ -735,7 +734,7 @@ let
               a ? retainedRelation
               && !((answer.merged.merge or { }) ? v2 && !(answer.merged.check.isV2MergeCoherent or false))
           then
-            rolesMet rewrites answer.merged a b
+            interface.rolesMet rewrites answer.merged a b
           else
             answer.merged
         )
@@ -751,7 +750,7 @@ let
       # holding every operand's fold
       else if r.holds or false then
         (interface.metWith.importLeaf rewrites (
-          interface.metWith.metWith rewrites "holds" (rolesMet rewrites r.merged a b) (
+          interface.metWith.metWith rewrites "holds" (interface.rolesMet rewrites r.merged a b) (
             if rewrites == null then
               [
                 a
@@ -762,14 +761,13 @@ let
           )
         ))
       else
-        rolesMet rewrites r.merged a b;
-  rolesMet = interface.rolesMet;
+        interface.rolesMet rewrites r.merged a b;
   relationMerge =
     a: b:
     if a ? typeMergeRel && !(interface.importedDecidable a && interface.importedDecidable b) then
       null
     else
-      relationMergeWithin null a b;
+      relationMergeWithin false null a b;
 
   # ★★ A REDECLARED OPTION ACCEPTS A DEFINITION ONLY IF EVERY DECLARED CHECK DOES: EVERY TYPE MERGE IS
   # MET (den-hoag-l1j4q, owner-ruled 2026-10-06, the meet reading of a redeclaration). nixpkgs'
@@ -870,9 +868,9 @@ let
         b
       ];
   mergeTypes = mergeTypesBy relationMerge;
-  mergeTypesWithin = mergeTypesBy (relationMergeWithin null);
-  # the merge arm of a fold step: the later operand first, and it decides (`relationMergeAs`)
-  mergeTypesDeciding = mergeTypesBy (relationMergeAs true null);
+  mergeTypesWithin = mergeTypesBy (relationMergeWithin false null);
+  # the merge arm of a fold step: the later operand first, and it decides (`relationMergeWithin`)
+  mergeTypesDeciding = mergeTypesBy (relationMergeWithin true null);
 
   # The same relation, answering with its REASON rather than with `null` — for a caller that reports
   # rather than dispatches. `redeclareDecl` throws on a failed merge and has to name the pair; where
@@ -897,7 +895,7 @@ let
   mergeTypesReasonBy =
     within: a: b:
     let
-      m = (if within then relationMergeWithin null else relationMerge) a b;
+      m = (if within then relationMergeWithin false null else relationMerge) a b;
       dA = m != null && dropsWrappedCheck m a;
       dB = m != null && dropsWrappedCheck m b;
     in
@@ -996,7 +994,7 @@ let
                   # relation met it already (`replaced`)
                   (
                     let
-                      x = relationMergeAs true rewrites later earlier;
+                      x = relationMergeWithin true rewrites later earlier;
                     in
                     if x == null then
                       null
@@ -1014,7 +1012,7 @@ let
         else
           (
             let
-              x = relationMergeAs true rewrites later earlier;
+              x = relationMergeWithin true rewrites later earlier;
             in
             if x == null then
               null
@@ -1039,7 +1037,7 @@ let
                 if !(interface.statesPayload r) && !(r ? carries.element) && !(r ? carries.alternatives) then
                   r
                 else
-                  rolesMet rewrites r earlier later
+                  interface.rolesMet rewrites r earlier later
               )
               (
                 if rewrites == null then
@@ -1077,7 +1075,7 @@ let
                 then
                   r
                 else
-                  rolesMet rewrites r earlier later
+                  interface.rolesMet rewrites r earlier later
               )
               (
                 if rewrites == null then
@@ -1185,7 +1183,7 @@ let
         exports =
           decides: mkMerge: a: b:
           let
-            x = relationMergeAs decides mkMerge a b;
+            x = relationMergeWithin decides mkMerge a b;
           in
           if x == null then
             null
