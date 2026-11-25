@@ -3209,7 +3209,8 @@ in
     # A type publishing a head judgement answers nixpkgs' v2 protocol: a `merge.v2` beside the
     # callable fold, and a `check` stating it is the coherent one, without which nixpkgs'
     # `checkV2MergeCoherence` refuses every mount. A type stating none publishes the bare fold, as
-    # nixpkgs' leaves and plain containers do.
+    # nixpkgs' leaves and plain containers do. A `submodule` answers v2, as nixpkgs' own
+    # `submoduleWith` does (den-hoag-1uwoz).
     test-an-exported-type-answers-merge-v2-with-a-coherent-check = {
       expr =
         builtins.mapAttrs
@@ -3222,8 +3223,13 @@ in
             either = gmT.either gmT.int gmT.str;
             nullOr = gmT.nullOr gmT.int;
             attrsOf = gmT.attrsOf gmT.int;
+            submodule = gmT.submodule { };
           };
       expected = {
+        submodule = {
+          v2 = true;
+          coherent = true;
+        };
         int = {
           v2 = false;
           coherent = true;
@@ -3277,6 +3283,57 @@ in
       {
         expr = rows gmT;
         expected = rows np;
+      };
+    # den-hoag-1uwoz: a gen `submodule` is v2, as nixpkgs' own is, so below a nixpkgs union and as a nixpkgs
+    # freeform element, where nixpkgs' `mergeDefinitions` reads the member's merge itself, an ad-hoc
+    # `// { check }` over it is refused as nixpkgs refuses the same override over its own submodule, admitted
+    # definition included, and `addCheck` over it is served at nixpkgs' value. (At the option root nixpkgs'
+    # fixup rebuilds the submodule and drops the override, so the root is not a row here.)
+    test-an-ad-hoc-check-on-a-gen-submodule-reads-in-nixpkgs-as-nixpkgs-submodule-does =
+      let
+        np = nixpkgsLib.types;
+        notTwo = v: !(builtins.isAttrs v) || (v.a or 0) != 2;
+        read =
+          ty: d:
+          let
+            v =
+              (nixpkgsLib.evalModules {
+                modules = [
+                  { options.x = nixpkgsLib.mkOption { type = ty; }; }
+                  { x = d; }
+                ];
+              }).config.x;
+            r = builtins.tryEval (builtins.deepSeq v v);
+          in
+          if r.success then r.value else "REFUSED";
+        rows =
+          T: mk:
+          let
+            S = T.submodule {
+              options.a = mk {
+                type = T.int;
+                default = 0;
+              };
+            };
+            adHoc = S // {
+              check = v: S.check v && notTwo v;
+            };
+            added = np.addCheck S notTwo;
+            at = {
+              either = t: d: read (np.either t np.str) d;
+              freeform = t: d: read (np.submodule { freeformType = np.attrsOf t; }) { k = d; };
+            };
+          in
+          nixpkgsLib.mapAttrs (_: r: {
+            adHocOk = r adHoc { a = 1; };
+            adHocBad = r adHoc { a = 2; };
+            addCheckOk = r added { a = 1; };
+            addCheckBad = r added { a = 2; };
+          }) at;
+      in
+      {
+        expr = rows gmT genMerge.mkOption;
+        expected = rows np nixpkgsLib.mkOption;
       };
     # A published option record reads as its path in a string, as nixpkgs' does
     # (`"${options.path.to.it}"`, nixpkgs' `__toString = _: showOption loc`).

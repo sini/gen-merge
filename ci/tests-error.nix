@@ -14949,5 +14949,67 @@ in
             "gen"
           ]
       );
+    # den-hoag-1uwoz: a gen `submodule` answers nixpkgs' `merge.v2` with a coherent `check`, as nixpkgs' own
+    # `submoduleWith` does, so an ad-hoc `// { check }` over it, read by nixpkgs' `mergeDefinitions` below a nixpkgs
+    # union or as a nixpkgs freeform element, is refused with nixpkgs' own coherence message, as the same override
+    # over nixpkgs' submodule is; the `np` rows are that twin.
+    flake.testsError.v2-submodule-coherence =
+      let
+        np = nixpkgsLib.types;
+        read =
+          ty: d:
+          force
+            (nixpkgsLib.evalModules {
+              modules = [
+                { options.x = nixpkgsLib.mkOption { type = ty; }; }
+                { x = d; }
+              ];
+            }).config.x;
+        subs = {
+          gen = genMerge.types.submodule {
+            options.a = genMerge.mkOption {
+              type = genMerge.types.int;
+              default = 0;
+            };
+          };
+          np = np.submodule {
+            options.a = nixpkgsLib.mkOption {
+              type = np.int;
+              default = 0;
+            };
+          };
+        };
+        at = {
+          either = {
+            mk = t: np.either t np.str;
+            w = v: v;
+            loc = "x";
+          };
+          freeform = {
+            mk = t: np.submodule { freeformType = np.attrsOf t; };
+            w = v: { k = v; };
+            loc = "x[.]k";
+          };
+        };
+      in
+      nixpkgsLib.listToAttrs (
+        nixpkgsLib.concatLists (
+          nixpkgsLib.mapAttrsToList (
+            sn: S:
+            nixpkgsLib.mapAttrsToList (
+              an: A:
+              nixpkgsLib.nameValuePair
+                "test-an-ad-hoc-check-on-a-${sn}-submodule-${an}-refuses-with-nixpkgs-coherence-text"
+                {
+                  expr = read (A.mk (S // { check = v: S.check v && (v.a or 0) != 2; })) (A.w { a = 1; });
+                  expectedError = {
+                    type = "ThrownError";
+                    msg = "^The option `${A.loc}' has a type `submodule' that uses\nan ad-hoc `type // [{] check = [.][.][.]; [}]' override, which is incompatible with\nthe v2 merge mechanism[.]";
+                  };
+                }
+            ) at
+          ) subs
+        )
+      );
   };
 }

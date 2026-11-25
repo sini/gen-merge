@@ -1702,8 +1702,11 @@ the one its constructor shipped, and is applied.
 nixpkgs' own `either`, `nullOr` and `addCheck` do: `merge` is `{ __functor; v2; }`, the functor
 calling the fold directly, and `check` carries `isV2MergeCoherent = true`, without which nixpkgs'
 `checkV2MergeCoherence` refuses the mount. Today that is `either` (so `oneOf`) and `nullOr`, and a
-derivation or refinement of either. Every other export publishes the bare fold, as nixpkgs' leaves
-do: its `headError` would be the pointwise check alone, which nixpkgs' v1 reading already computes,
+derivation or refinement of either; and `submodule`, whose head judgement is none beyond its pointwise
+check, answers v2 as nixpkgs' own `submoduleWith` does, so an ad-hoc `// { check }` over it below a
+nixpkgs union or as a nixpkgs freeform element is refused there with nixpkgs' coherence text, as the
+same override over nixpkgs' submodule is, and `addCheck` over it is served. Every other export
+publishes the bare fold, as nixpkgs' leaves do: its `headError` would be the pointwise check alone, which nixpkgs' v1 reading already computes,
 and a v2 `merge` would make nixpkgs refuse the ad-hoc `type // { check = …; }` it accepts on a v1
 type; so `gen.int // { check = …; }` mounts under `lib.evalModules` as nixpkgs'
 `int // { check = …; }` does.

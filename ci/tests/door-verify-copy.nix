@@ -368,6 +368,39 @@ in
         ) kinds
       ) doors;
     };
+    # At a GEN union, gen's own choice reads the door copy's `verify` on the MERGED value (owner arm (ii)), never the
+    # one-definition projection the copy publishes for a foreign reader in its `check` and its `merge.v2`
+    # `headError` (den-hoag-1uwoz): a split the verify admits merged is served, under gen's engine and as a gen
+    # union nixpkgs' engine mounts, for a nesting copy and a copy of a container over leaves.
+    test-a-door-completed-verify-copy-is-judged-on-its-merged-value-at-a-gen-union = {
+      expr = mapAttrs (
+        _: door:
+        mapAttrs (_: k: {
+          either = read (gt.either (door k.t) gt.str) k.ok;
+          eitherR = read (gt.either gt.str (door k.t)) k.ok;
+          oneOf = read (gt.oneOf [
+            gt.int
+            (door k.t)
+          ]) k.ok;
+          eitherNp = readNp (gt.either (door k.t) gt.str) k.ok;
+        }) kinds
+      ) doors;
+      expected = mapAttrs (
+        _: _:
+        mapAttrs (
+          _: k:
+          let
+            served = read k.t k.ok;
+          in
+          {
+            either = served;
+            eitherR = served;
+            oneOf = served;
+            eitherNp = served;
+          }
+        ) kinds
+      ) doors;
+    };
     # A door copy as a member of an OVERLAPPING union: the copy's verify rejects the value and the other member
     # admits it, so the union serves the other member's reading, as main and nixpkgs' `addCheck` twin do. The
     # member choice reads the copy's verify as a reason to move on, never as a throw inside the choice.

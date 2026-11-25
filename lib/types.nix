@@ -1418,6 +1418,9 @@ let
               # child's own evaluation, in `nests.calledMode`, is what refuses a finding there.
               mergeDefs = {
                 __functor = _: called;
+                # no head judgement beyond the pointwise check, stated, so the export answers nixpkgs' `merge.v2` as
+                # nixpkgs' own `submoduleWith` does, its `headError` the published check (den-hoag-1uwoz)
+                headJudge = _: _: null;
                 threaded =
                   ev: loc: defs:
                   if all (d: admits d.value) defs then
@@ -1676,6 +1679,9 @@ let
               # child's own evaluation, in `nests.calledMode`, is what refuses a finding there.
               mergeDefs = {
                 __functor = _: called;
+                # no head judgement beyond the pointwise check, stated, so the export answers nixpkgs' `merge.v2` as
+                # nixpkgs' own `submoduleWith` does, its `headError` the published check (den-hoag-1uwoz)
+                headJudge = _: _: null;
                 threaded =
                   ev: loc: defs:
                   if all (d: admits d.value) defs then

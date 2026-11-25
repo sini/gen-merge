@@ -1236,16 +1236,18 @@ let
       # member's `headError`
       (
         let
+          # a form-C copy's merge reads its verify itself: the judgement reads its base merge (`__verifiedMerge`) and asks
+          # the verify below, so a rejection is a reason the choice moves on from, not a throw inside it, and a
+          # check the copy publishes for a FOREIGN reader beside it (`verifiedMerge.published`, the one-definition
+          # projection) is not one gen's choice asks (den-hoag-d74w0 arm (ii), den-hoag-1uwoz)
+          m = t.merge.__verifiedMerge or t.merge;
           r =
-            if isV2 t then
-              v2Result (t.merge.v2 { inherit loc defs; })
+            if m ? v2 then
+              v2Result (m.v2 { inherit loc defs; })
             else
-              # a form-C copy's merge reads its verify itself and throws on a rejected value: the judgement reads
-              # its base merge (`__verifiedMerge`) and asks the verify below, so a rejection is a reason the
-              # choice moves on from, not a throw inside it
               {
                 headError = null;
-                value = (t.merge.__verifiedMerge or t.merge) loc defs;
+                value = m loc defs;
               };
         in
         if t ? mergeDefs.headJudge && t.mergeDefs.headJudge loc defs != null then
@@ -4457,6 +4459,16 @@ let
                 };
           };
       };
+      # `verifiedMerge vf m` whose foreign `headError` also states the check `c` the record publishes beside it, on every
+      # definition, as nixpkgs' `addCheck` states the check it publishes (den-hoag-1uwoz): a v2 reader judges a v2 member
+      # by `headError` alone, so a published check its `headError` does not state is one the record marks coherent and
+      # never enforces. `__verifiedMerge` stays `m`, which gen's own readers judge with the `verify` on the merged value.
+      published =
+        c: vf: m:
+        let
+          vm = rebuildClosed.verifiedMerge vf m;
+        in
+        vm // { inherit (rebuildClosed.verifiedMerge.lifted c vm) v2; };
     };
   };
 
@@ -8717,8 +8729,12 @@ let
             # `v2` merge keeping its protocol with the `verify` on its `headError`, and stating the copy's own check
             # there first (den-hoag-v4cw1)
             ${if replacesVerify x && x ? carries then "merge" else null} =
-              rebuildClosed.verifiedMerge x.verify
-                (if base ? v2 then rebuildClosed.verifiedMerge.lifted own base else base);
+              if base ? v2 then
+                rebuildClosed.verifiedMerge.published projection x.verify (
+                  rebuildClosed.verifiedMerge.lifted own base
+                )
+              else
+                rebuildClosed.verifiedMerge x.verify base;
             # its completion's foreign relation, met with this record, as `meetOf`'s published rewrite
             # answers: a foreign engine asking this record's `typeMerge` keeps its check; a completion
             # stating none (gen-types' own records) gets none
