@@ -2675,7 +2675,7 @@ let
   # `loc ++ [ k ]` descent nixpkgs' `(attrsOf anything).merge` makes.
   mergeAnythingDefs =
     let
-      isStringLike = d: d.value ? outPath || d.value ? __toString;
+      isCoercibleDef = d: d.value ? outPath || d.value ? __toString;
     in
     loc: defs:
     if defs == [ ] then
@@ -2692,12 +2692,14 @@ let
     # call, i.e. per attrset node the fold visits (measured on Nix 2.36: a 2-definition, 81-node value
     # read +81 thunks inline and +1 bound, against the arm's absence). Bound in the file's `let` it cost
     # every evaluation that imports this file a thunk; bound here it costs one only where an `anything`
-    # fold runs. Its name, a predicate on a definition, is gen-prelude's `isStringLike` because that
-    # symbol is already interned: a new name costs its bytes in every evaluation that parses this file
-    # (den-hoag-z9m0f lever). A call to prelude's `isStringLike` would cost a thunk per definition per node. `builtins.any` and `core.mergeOneOption` are read in place because an
+    # fold runs. `isCoercibleDef` is a predicate on a DEFINITION, `{ file, value }`, not on a value:
+    # prelude's value-level `isStringLike` would cost an argument thunk per definition per node, and
+    # its string and path arms would change the verdict on string-valued definitions. The new name
+    # costs its interned bytes once per evaluation that parses this file (den-hoag-z9m0f lever).
+    # `builtins.any` and `core.mergeOneOption` are read in place because an
     # `inherit` binding is a thunk per import (measured, the z9m0f spec's cost table).
-    else if builtins.any isStringLike defs then
-      if all isStringLike defs then
+    else if builtins.any isCoercibleDef defs then
+      if all isCoercibleDef defs then
         core.mergeOneOption loc defs
       else
         throw "gen-merge: the option `${showOption loc}' has conflicting option types: a string-coercible set (a derivation, or a set with `outPath` or `__toString`) is defined beside a definition of another type"
