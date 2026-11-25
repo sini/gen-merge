@@ -2673,6 +2673,7 @@ let
   # the door. A refusal names the FULL path — `mergeLeaf` reports through `showOption loc` — so a
   # conflict under a nested key names that key rather than the option root, which is the same
   # `loc ++ [ k ]` descent nixpkgs' `(attrsOf anything).merge` makes.
+  zgCoercible = d: d.value ? outPath || d.value ? __toString;
   mergeAnythingDefs =
     loc: defs:
     if defs == [ ] then
@@ -2684,12 +2685,14 @@ let
     # v`), folded by `mergeOneOption`: ONE definition is carried whole, never rebuilt per key; two or
     # more are refused, equal ones too; one mixed with a definition of any other type is refused as
     # conflicting types (den-hoag-z9m0f). The test is `isStringLike` on a set, spelled as the two `?`
-    # it reduces to (`?` is false on a non-set), so it forces no `outPath` and allocates no thunk per
-    # definition on the ordinary path, where a call to `isStringLike` would; `builtins.any` and
-    # `core.mergeOneOption` are read in place because an `inherit` binding is a thunk per import
-    # (measured, the z9m0f spec's cost table).
-    else if builtins.any (d: d.value ? outPath || d.value ? __toString) defs then
-      if all (d: d.value ? outPath || d.value ? __toString) defs then
+    # it reduces to (`?` is false on a non-set), so it forces no `outPath`. It is bound ONCE, as
+    # `zgCoercible` above, because a lambda literal here allocates a thunk on every call, i.e. per
+    # attrset node the fold visits (measured on Nix 2.36: a 2-definition, 81-node value read +81 thunks
+    # inline and +1 hoisted, against the arm's absence); a call to `isStringLike` would cost a thunk per
+    # definition per node. `builtins.any` and `core.mergeOneOption` are read in place because an
+    # `inherit` binding is a thunk per import (measured, the z9m0f spec's cost table).
+    else if builtins.any zgCoercible defs then
+      if all zgCoercible defs then
         core.mergeOneOption loc defs
       else
         throw "gen-merge: the option `${showOption loc}' has conflicting option types: a string-coercible set (a derivation, or a set with `outPath` or `__toString`) is defined beside a definition of another type"
@@ -2700,8 +2703,10 @@ let
       # rebuild below keeps the first and destroys the second — `listToAttrs` lands every closure in a
       # fresh Value cell, and upstream Nix and Determinate equate a function only by that cell while
       # Lix compares the forced object — so a rebuilt construction stopped equalling itself on two
-      # evaluators of three. When EVERY definition carries the mark this arm is exactly `raw`'s fold,
-      # and it CONSULTS `mergeLeaf` rather than restating it: one definition is carried as it is,
+      # evaluators of three. A mark on a string-coercible record never reaches here: the arm above
+      # decides it first, by its type, as nixpkgs' `getType` does (one carried, several refused). For
+      # a mark on a non-string-coercible record, when EVERY definition carries it this arm is exactly
+      # `raw`'s fold, and it CONSULTS `mergeLeaf` rather than restating it: one definition is carried as it is,
       # several are carried if they are all `==` to the first and refused by name at `loc` otherwise.
       # A mixed list (some marked, some plain) still takes the rebuild. The head is tested first so a
       # plain value pays one attribute test per attrset node; every definition is already forced to
