@@ -377,7 +377,7 @@ let
           [ { new = 3; } ]
       )
     )).config.new;
-  # den-hoag-1w6qr: one point of a door return's per-level cost, the attrsOf/listOf depth `d`. `AC`: nixpkgs' engine, a
+  # den-hoag-1w6qr: one point of a door return's cost over depth, the attrsOf/listOf depth `d`. `AC`: nixpkgs' engine, a
   # stock `listOf^d (addCheck int (> 0))` declared before the door return of `listOf^d int`, the door's met arm asked
   # (its exported `typeMerge` is the reversed fold's seed). `JE`, `J`, `PD`: gen's engine, the door return of a raw
   # partner holding an ad-hoc override (at an alternatives role, the element role, or a payload-dependent functor)
@@ -875,8 +875,8 @@ let
     # den-hoag-1k5mi: a re-evaluated published module set's cost, read by the runner as thunks per child on
     # gen's engine against nixpkgs'.
   }
-  # den-hoag-1w6qr: a door return's cost per level, depth 1 to 5 (`door-meet-level-cost-<fam>-<d>`), read by the
-  # runner as thunks per level between depth 1 and 4
+  # den-hoag-1w6qr: a door return's cost over depth, depth 1 to 5 (`door-meet-level-cost-<fam>-<d>`), read by the
+  # runner as the measured total from depth 1 to 5, a ratchet
   // builtins.listToAttrs (
     builtins.concatMap
       (

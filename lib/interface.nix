@@ -3713,7 +3713,7 @@ let
   # (`kept`) carries nothing, and a constant constructor's own record crosses as itself. A `verify` is read on the merged
   # value, as gen's own fold reads one (`checked`) and as the stock-host guard reads one (`guardedOption`): a definition
   # alone is not the value it refines, and it is stated where a fold asks membership (`verifiedMerge`).
-  # ── (prototype, den-hoag-xmoua v1) the door's role-meet helpers ──
+  # ── the door's role-meet helpers ──
   # a role holding a met record read as its root join, at every depth of the element and alternatives roles
   # the role meet, one definition read by the engine (lib/modules.nix) and both doors
   rolesMet =
@@ -3921,7 +3921,7 @@ let
                 null;
           in
           if isAttrs y then y else x1;
-        # a receiver's roles as the obligation their met records carry (`__meetOwed`), never their join's check (Q2 arm (a))
+        # a receiver's roles as the obligation their met records carry (`__meetOwed`), never their join's check
         doorDebtView =
           x:
           let
@@ -3939,7 +3939,7 @@ let
             b = if isAttrs y then y else x;
           in
           if isAttrs x && x ? __meetOwed then b // { check = x.__meetOwed; } else b;
-        # the join a door returns, closed under nixpkgs' later rebuilds at its roles only (Q1 arm (iv)): no top check is carried
+        # the join a door returns, closed under nixpkgs' later rebuilds at its roles only: no top check is carried
         doorRoleClosed =
           j:
           j
@@ -3950,15 +3950,12 @@ let
                 p = importedPartner f;
                 j0 = (doorStrip j).typeMerge f;
               in
-              if j0 == null || !(isAttrs p) || false then
-                j0
-              else
-                doorRoleClosed (rolesMet null j0 (doorDebtView j) p);
+              if j0 == null || !(isAttrs p) then j0 else doorRoleClosed (rolesMet null j0 (doorDebtView j) p);
           };
-        # `importedMerge` asked of a door return's retained relation (its author's join) rather than of its exported
-        # `typeMerge`, which meets the partner's roles: for a reader whose predicate is about the author's join alone
-        # (`lib/types.nix` `elementRelIn`'s override walk)
-        retainedMerge = a: b: importedMerge (a // { typeMerge = a.retainedRelation.typeMerge; }) b;
+        # `importedMerge` asked of a door return's author's join, read off its `typeMerge` (the unmet member the field
+        # states, `retained`, else the field itself as nixpkgs calls it), never off `retainedRelation` beside it: for a
+        # reader whose predicate is about the author's join alone (`lib/types.nix` `elementRelIn`'s override walk)
+        retainedMerge = a: importedMerge (a // { typeMerge = a.typeMerge.retained or a.typeMerge; });
       in
       {
         inherit doorDebtView doorRoleClosed retainedMerge;
@@ -4422,11 +4419,27 @@ let
             if x ? typeMerge then
               {
                 typeMerge =
-                  f:
-                  let
-                    j = x.typeMerge f;
-                  in
-                  if j == null then null else close joined j;
+                  if x.typeMerge ? retained then
+                    {
+                      retained =
+                        f:
+                        let
+                          j = x.typeMerge.retained f;
+                        in
+                        if j == null then null else close joined j;
+                      __functor =
+                        _: f:
+                        let
+                          j = x.typeMerge f;
+                        in
+                        if j == null then null else close joined j;
+                    }
+                  else
+                    f:
+                    let
+                      j = x.typeMerge f;
+                    in
+                    if j == null then null else close joined j;
               }
             else
               { }
@@ -7201,7 +7214,7 @@ let
               conj;
           _checkWitness = j._checkWitness or j.check;
           __meetJoin = j;
-          # (prototype, den-hoag-xmoua v1 Q2) the declaration-derived obligation, apart from the join's own check
+          # the declaration-derived obligation, apart from the join's own check
           __meetOwed = {
             __functor = _: v: builtins.all (c: c v) ocs;
             isV2MergeCoherent = true;
@@ -10021,22 +10034,29 @@ let
               else
                 m;
           in
+          # A retained relation is published as ONE field: the protocol's call is the met arm (`__functor`), and the
+          # author's join it meets is a member of the same value (`retained`), so a reader of the author's join reads
+          # the field nixpkgs calls, and a `//` replacing the field replaces both (`rebuildClosed.doorMeet.retainedMerge`)
           if t ? retainedRelation.typeMerge then
-            f:
-            let
-              j = t.retainedRelation.typeMerge f;
-            in
-            if j == null then
-              j
-            else if !(isAttrs f && f ? __declared) then
-              (
+            {
+              retained = f: t.retainedRelation.typeMerge f;
+              __functor =
+                _: f:
                 let
-                  p = importedPartner f;
+                  j = t.retainedRelation.typeMerge f;
                 in
-                if isAttrs p then rebuildClosed.doorMeet.doorRoleClosed (rolesMet null j exported p) else j
-              )
-            else
-              meet false j [ f.__declared ] f.__declared
+                if j == null then
+                  j
+                else if !(isAttrs f && f ? __declared) then
+                  (
+                    let
+                      p = importedPartner f;
+                    in
+                    if isAttrs p then rebuildClosed.doorMeet.doorRoleClosed (rolesMet null j exported p) else j
+                  )
+                else
+                  meet false j [ f.__declared ] f.__declared;
+            }
           else
             (
               f:

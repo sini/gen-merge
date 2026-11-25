@@ -836,11 +836,11 @@ let
           if other ? carries && (!(other ? retainedRelation) || partnerElem != null) then
             null
           else if other ? carries then
-            # a door return gen cannot read whole: its author's join is asked once, here, through the door's retained
-            # relation (`interface.rebuildClosed.doorMeet.retainedMerge`), since the walk below asks only whether that join states an
-            # override and never reads the door's met roles; an answer stating one is marked (`adHocChecked`, a name the
-            # library already interns) for the refusal below, which names it; no binding outside this arm, so no other
-            # pair pays
+            # a door return gen cannot read whole: its author's join is asked once, here, read off the one field the
+            # door publishes its relation in (`interface.rebuildClosed.doorMeet.retainedMerge`), since the walk below asks
+            # only whether that join states an override and never reads the door's met roles; an answer stating one is
+            # marked (`adHocChecked`, a name the library already interns) for the refusal below, which names it; no
+            # binding outside this arm, so no other pair pays
             (
               let
                 j = (interface.rebuildClosed.doorMeet.retainedMerge other (rebuild element)).merged or null;

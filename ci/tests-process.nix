@@ -549,25 +549,26 @@
           endblk; fi
 
           if sel door-meet-level-cost; then blk door-meet-level-cost 8
-          # den-hoag-1w6qr (ADR-0032): a door return's cost per level of depth, as the thunks per level between depth 1
-          # and 4 (`doorMeetLevelCost`). AC: nixpkgs' engine with the door return declared last, its met arm asked
-          # (THE MEET); JE, J and PD: gen's engine, where the override walk asks the door's retained relation
-          # (`interface.rebuildClosed.doorMeet.retainedMerge`), never the arm. The bounds are the landed figures, in
-          # THUNKS, the same on Nix, Determinate and Lix. Main 3676a07 reads 173 / 3443 / 2868 / 7938, so the admitted
-          # residue over it is 283 / 9 / 9 / 6 a level, flat in depth (the base curves of JE, J and PD are not flat: that
-          # growth is main's). The door residue's JE and J read refused (`door-partner`'s RESIDUE cell), so their cost is
-          # the refusal's. An optimization lowers a bound in the same change; a rise is authorized only after a
-          # minimality attempt, and is re-anchored in the landing commit that makes it.
-          for bound in AC:true:456 JE:false:3452 J:false:2877 PD:true:7944; do
+          # den-hoag-1w6qr (ADR-0032): a door return's cost over depth, a RATCHET on the measured total: the thunks the
+          # cell costs from depth 1 to depth 5, T(5) - T(1) (`doorMeetLevelCost`). It is not a per-level constant: gen's own
+          # step grows with depth (JE +379 thunks a level, PD superlinear, on main and here alike), so the bound is the
+          # measured span, never a flat figure per level. AC: nixpkgs' engine with the door return declared last, its met
+          # arm asked (THE MEET); JE, J and PD: gen's engine, where the override walk asks the door return's author's join,
+          # the unmet member its `typeMerge` states (`interface.rebuildClosed.doorMeet.retainedMerge`), never the arm. The
+          # bounds are the landed figures, in THUNKS, the same on Nix, Determinate and Lix. The door residue's JE and J read
+          # refused (`door-partner`'s RESIDUE cell), so their cost is the refusal's. An optimization lowers a bound in the
+          # same change; a rise is authorized only after a minimality attempt, and is re-anchored in the landing commit
+          # that makes it.
+          for bound in AC:true:1804 JE:false:14567 J:false:12267 PD:true:62890; do
             f=''${bound%%:*} rest=''${bound#*:}; want=''${rest%%:*} max=''${rest#*:}
             thunksOf "door-meet-level-cost-$f-1"
             [ "$val" = "$want" ] || die "door-meet-level-cost-$f-1" "expected value $want, got '$val'"
             t1=$thunks
-            thunksOf "door-meet-level-cost-$f-4"
-            [ "$val" = "$want" ] || die "door-meet-level-cost-$f-4" "expected value $want, got '$val'"
-            per=$(((thunks - t1) / 3))
-            [ "$per" -le "$max" ] || die "door-meet-level-cost-$f-4" "a door return ($f) costs $per thunks per level, over its bound $max; ADR-0032: a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
-            echo "door-meet-level-cost $f: $per thunks per level (bound $max)"
+            thunksOf "door-meet-level-cost-$f-5"
+            [ "$val" = "$want" ] || die "door-meet-level-cost-$f-5" "expected value $want, got '$val'"
+            span=$((thunks - t1))
+            [ "$span" -le "$max" ] || die "door-meet-level-cost-$f-5" "a door return ($f) costs $span thunks from depth 1 to 5, over its bound $max; ADR-0032: a rise is authorized only after a minimality attempt, re-anchored in the landing commit"
+            echo "door-meet-level-cost $f: $span thunks from depth 1 to 5 (bound $max)"
           done
           endblk; fi
 

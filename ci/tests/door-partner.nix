@@ -806,6 +806,116 @@ let
       bad = npe [ s.T (d s.P) ] s.bad;
       good = npe [ s.T (d s.P) ] s.good;
     }) armShapes;
+  # a door return EDITED at its relation by `//`: its protocol field replaced (F1, F3), wrapped (F6, F7), or the gen
+  # datum beside it replaced (F2). It reads as the field nixpkgs calls states: `P`'s served, `rawExtraAttrs`'s refused
+  edited =
+    d:
+    let
+      P = d (np.attrsOf np.int);
+      Pov = d rawExtraAttrs;
+    in
+    {
+      F1 = P // {
+        typeMerge = Pov.typeMerge;
+      };
+      F2 = Pov // {
+        retainedRelation = P.retainedRelation;
+      };
+      F3 = Pov // {
+        typeMerge = P.typeMerge;
+      };
+      F6 = P // {
+        typeMerge = f: Pov.typeMerge f;
+      };
+      F7 = Pov // {
+        typeMerge = f: P.typeMerge f;
+      };
+    };
+  editedCells =
+    engine: d:
+    builtins.mapAttrs (_: x: {
+      BX = engine [
+        aI
+        x
+      ] { k = 2; };
+      XB = engine [
+        x
+        aI
+      ] { k = 2; };
+    }) (edited d);
+  # arm (b)'s checked and lazy members beside the raw override partner (`Eg`'s words): G's alternatives role CHECKED
+  # (`addCheck … noFive`), or LAZY containers whose read reaches `k` alone while `z` throws; each read through `rd`, a
+  # cell "<word>/<value>" per family
+  noFive = v: !(builtins.elem 5 v);
+  memberFams = {
+    JEC = {
+      p = np.attrsOf (np.either shortList np.str);
+      G = gt.attrsOf (gt.either (np.addCheck (gt.listOf np.int) noFive) np.str);
+      T = np.attrsOf (np.either (np.addCheck (np.listOf np.int) noFive) np.str);
+      rd = x: x;
+      vals = {
+        ok.k = [ 2 ];
+        long.k = [
+          2
+          3
+        ];
+        five.k = [ 5 ];
+      };
+    };
+    JL = {
+      p = np.lazyAttrsOf (np.either shortList np.str);
+      G = gt.lazyAttrsOf (gt.either (gt.listOf np.int) np.str);
+      T = np.lazyAttrsOf (np.either (np.listOf np.int) np.str);
+      rd = x: x.k;
+      vals = {
+        ok = {
+          k = [ 2 ];
+          z = throw "door-partner: JL z forced";
+        };
+        long = {
+          k = [
+            2
+            3
+          ];
+          z = throw "door-partner: JL z forced";
+        };
+        thr.k = throw "door-partner: JL k reached";
+      };
+    };
+  };
+  memberCells =
+    engine: vs:
+    builtins.mapAttrs (
+      _: f:
+      builtins.listToAttrs (
+        builtins.concatMap (
+          w:
+          map (v: {
+            name = "${w}/${v}";
+            value = engine f (letters w) v;
+          }) (builtins.filter (v: f.vals ? ${v}) vs)
+        ) eitherResidueWords
+      )
+    ) memberFams;
+  genRd =
+    f: w: v:
+    json (
+      f.rd
+        (gm.evalModuleTree { } (
+          map (l: { options.x = gm.mkOption { type = if l == "G" then f.G else f.p; }; }) w
+          ++ [ { x = f.vals.${v}; } ]
+        )).config.x
+    );
+  npeRd =
+    f: w: v:
+    json (
+      f.rd
+        (nl.evalModules {
+          modules = map (l: { options.x = nl.mkOption { type = if l == "G" then f.T else f.p; }; }) w ++ [
+            { x = f.vals.${v}; }
+          ];
+        }).config.x
+    );
   # where the bare type is the later declaration, nixpkgs serves G's coherent join
   eitherResidueWords = [
     "PG"
@@ -1130,6 +1240,120 @@ in
           door = t;
           tdoor = t;
         };
+    };
+    # C1: a door return edited by `//` reads as the field nixpkgs calls states, never as the gen datum beside it.
+    # BX (the door return declared last) reads nixpkgs' value; XB (the bare container last) reads the refusal of the
+    # override its field states (the pinned RESIDUE, as `rawExtra` above) or the value its field serves. RED where the
+    # override walk reads `retainedRelation` rather than `typeMerge`: F1, F2 and F6 served, F3 and F7 refused
+    test-a-door-return-edited-at-its-relation-reads-as-its-typemerge-states =
+      let
+        want = d: {
+          F1 = {
+            BX = npe [ aI (edited d).F1 ] { k = 2; };
+            XB = "REFUSED";
+          };
+          F2 = {
+            BX = npe [ aI (edited d).F2 ] { k = 2; };
+            XB = "REFUSED";
+          };
+          F3 = {
+            BX = npe [ aI (edited d).F3 ] { k = 2; };
+            XB = npe [ (edited d).F3 aI ] { k = 2; };
+          };
+          F6 = {
+            BX = npe [ aI (edited d).F6 ] { k = 2; };
+            XB = "REFUSED";
+          };
+          F7 = {
+            BX = npe [ aI (edited d).F7 ] { k = 2; };
+            XB = npe [ (edited d).F7 aI ] { k = 2; };
+          };
+        };
+      in
+      {
+        expr = {
+          door = editedCells gen door;
+          tdoor = editedCells gen tdoor;
+          twinBX = builtins.mapAttrs (_: x: x.BX) (editedCells npe door);
+        };
+        expected = {
+          door = want door;
+          tdoor = want tdoor;
+          twinBX = {
+            F1 = "REFUSED";
+            F2 = "REFUSED";
+            F3 = ''{"k":2}'';
+            F6 = "REFUSED";
+            F7 = ''{"k":2}'';
+          };
+        };
+      };
+    # XR: gen's engine asks a door return's author's join (the unmet member its `typeMerge` states), never the met arm
+    # the field's call is. A door return whose call throws while its member is `P`'s is served in both orders; RED
+    # (refused) where the override walk calls the field
+    test-gen-engine-reads-a-door-return-author-join-never-its-met-arm =
+      let
+        armless =
+          d:
+          let
+            P = d (np.attrsOf np.int);
+          in
+          P
+          // {
+            typeMerge = P.typeMerge // {
+              __functor = _: _: throw "door-partner: the met arm was asked";
+            };
+          };
+        read = d: {
+          BX = gen [
+            aI
+            (armless d)
+          ] { k = 2; };
+          XB = gen [
+            (armless d)
+            aI
+          ] { k = 2; };
+        };
+      in
+      {
+        expr = {
+          door = read door;
+          tdoor = read tdoor;
+        };
+        expected = {
+          door = {
+            BX = ''{"k":2}'';
+            XB = ''{"k":2}'';
+          };
+          tdoor = {
+            BX = ''{"k":2}'';
+            XB = ''{"k":2}'';
+          };
+        };
+      };
+    # arm (b) at the checked (JEC) and lazy (JL) members: the raw override partner declared before gen's container is
+    # served as nixpkgs serves it (`ok`, never forcing JL's `z`); `long`, `five` and `thr` are refused (a check every
+    # declaration states, THE MEET, or a throwing element). RED (`ok` refused) where the container takes the raw
+    # partner's override-holding join whichever declaration came first
+    test-a-raw-override-partner-beside-a-checked-or-lazy-member-reads-nixpkgs-value = {
+      expr = memberCells genRd [
+        "ok"
+        "long"
+        "five"
+        "thr"
+      ];
+      expected =
+        memberCells
+          (
+            f: w: v:
+            if v == "ok" then npeRd f w v else "REFUSED"
+          )
+          [
+            "ok"
+            "long"
+            "five"
+            "thr"
+          ];
     };
   };
 }
