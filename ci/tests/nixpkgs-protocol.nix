@@ -1809,6 +1809,115 @@ in
       expected = "submodule";
     };
 
+    # A copy of a built submodule record re-entered through gen's `mkOptionType` door with its
+    # `substSubModules` rewritten: an applicable rewrite is taken (`mark` adds `y = 7`), in both
+    # engines, and a non-applicable one over a copy stating `getSubModules = null` is never called,
+    # as nixpkgs never calls it, so the copy is served (its refusals: `ci/tests-error.nix`,
+    # `copy-rebuild`).
+    test-a-door-copy-takes-an-applicable-rebuild-and-never-calls-one-without-a-module-set =
+      let
+        base = gmT.submodule {
+          options.x = genMerge.mkOption {
+            type = gmT.int;
+            default = 1;
+          };
+        };
+        orig = base.substSubModules;
+        copies = {
+          unmodified = { };
+          lambda.substSubModules = m: orig m;
+          twoLevel.substSubModules = {
+            __functor = _: {
+              __functor = _: m: orig m;
+            };
+          };
+          mark.substSubModules =
+            m:
+            orig (
+              m
+              ++ [
+                {
+                  options.y = genMerge.mkOption {
+                    type = gmT.int;
+                    default = 7;
+                  };
+                }
+              ]
+            );
+          noModuleSet = {
+            substSubModules = 5;
+            getSubModules = null;
+          };
+        };
+        door =
+          over:
+          genMerge.mkOptionType (
+            builtins.removeAttrs (base // over) [
+              "functor"
+              "typeMerge"
+              "__mint"
+              "__okAt"
+              "__payload"
+              "__sealed"
+              "__typeSelf"
+            ]
+          );
+        read =
+          eng: over:
+          let
+            mods = mkOption: [
+              {
+                options.o = mkOption {
+                  type = door over;
+                  default = { };
+                };
+                config.o.x = 2;
+              }
+            ];
+            c =
+              if eng == "np" then
+                (nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption; }).config
+              else
+                (genMerge.evalModuleTree { } (mods genMerge.mkOption)).config;
+          in
+          {
+            inherit (c.o) x;
+            y = c.o.y or "absent";
+          };
+        row = v: {
+          gen = v;
+          np = v;
+        };
+      in
+      {
+        expr = builtins.mapAttrs (_: over: {
+          gen = read "gen" over;
+          np = read "np" over;
+        }) copies;
+        expected = {
+          unmodified = row {
+            x = 2;
+            y = "absent";
+          };
+          lambda = row {
+            x = 2;
+            y = "absent";
+          };
+          twoLevel = row {
+            x = 2;
+            y = "absent";
+          };
+          mark = row {
+            x = 2;
+            y = 7;
+          };
+          noModuleSet = row {
+            x = 2;
+            y = "absent";
+          };
+        };
+      };
+
     # ── THE TREE-AS-A-TYPE IS AN OPTION TYPE (den-hoag-foreign-mount-parity-knhyg) ──────────────
     # `(evalModuleTree …).type` is built at the crossing site (`defineType`), under nixpkgs' name for
     # a type whose definitions are modules, `submodule`, so it answers the whole protocol a foreign

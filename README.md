@@ -1082,7 +1082,13 @@ in both directions: by gen's redeclaration fold, and by nixpkgs' `fixupOptionTyp
 outer type's `substSubModules` on **every** option whose type states a module set, declared once or
 more. A stated `substSubModules` that answers no option type (`null`, a bare attrset) is refused by
 name where gen's evaluation rebuilds it, and aborts in `lib.evalModules` as it does over a nixpkgs
-type; the base's rebuild no longer serves it silently.
+type; the base's rebuild no longer serves it silently. A copy re-entered through `mkOptionType` whose
+rewritten `substSubModules` cannot be applied (`null`, `5`, a bare attrset, a functor not returning a
+function: gen-prelude's `isApplicable`) is refused by name when an option of its type is rebuilt, in
+gen's evaluation and in `lib.evalModules` alike, where nixpkgs aborts on its own twin. A copy stating
+`getSubModules = null` is never rebuilt, as nixpkgs never calls the field there, and keeps its base's
+rebuild (`ci/tests-error.nix`, `copy-rebuild`;
+`nixpkgs-protocol.test-a-door-copy-takes-an-applicable-rebuild-and-never-calls-one-without-a-module-set`).
 
 The derivation keeps its base's `name` by default, the value vocabulary its messages speak. Its
 identity is `__derivation.id`, which every gen relation reads through `interface.keyOf` and which

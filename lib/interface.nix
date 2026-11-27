@@ -1602,10 +1602,30 @@ let
     if
       substructure != null
       && _substSubModulesWitness != null
+      && t ? substSubModules
       && substSubModules != _substSubModulesWitness
-      && (isFunction substSubModules || isAttrs substSubModules && substSubModules ? __functor)
     then
-      substructure // { rebuild = substSubModules; }
+      # A rewritten rebuild that cannot be applied (gen-prelude's `isApplicable`, which follows a functor
+      # to what it returns) is refused by name when it is called, where nixpkgs aborts on the same call.
+      # nixpkgs calls it only over a stated module set, so a copy stating `getSubModules = null` keeps
+      # the base's rebuild, and the refusal stays in the rebuild, never at this door (ADR-0039 (2), (3)).
+      if prelude.isApplicable substSubModules then
+        substructure // { rebuild = substSubModules; }
+      else if (t.getSubModules or null) == null then
+        importedSubstructure t
+      else
+        substructure
+        // {
+          rebuild =
+            _m:
+            throw (
+              "gen-merge: `mkOptionType': the option type `${nameOf t}' is a copy of a built record whose `substSubModules' "
+              + "is rewritten to a value that cannot be applied (not a function, nor a functor returning one). "
+              + "The copy states a module set (`getSubModules'), and an option of its type is rebuilt over that set "
+              + "by that `substSubModules', as in the module system it comes from. Make `substSubModules' a function "
+              + "returning an option type, or state `getSubModules = null' where the copy carries no module set"
+            );
+        }
     else
       importedSubstructure t;
 

@@ -14949,5 +14949,84 @@ in
             "gen"
           ]
       );
+
+    # A copy of a built submodule record re-entered through gen's `mkOptionType` door, its
+    # `substSubModules` rewritten to a value that cannot be applied, is refused by name when an option
+    # of its type is rebuilt, in both engines, where nixpkgs aborts on its own twin (parity-defect rule
+    # (3): silent or abort to a named refusal). Before, `5` and `{ }` kept the base's rebuild unannounced
+    # and the two functors aborted. The served rows, an applicable rewrite and a copy stating no module
+    # set: `ci/tests/nixpkgs-protocol.nix`.
+    flake.testsError.copy-rebuild =
+      let
+        base = t.submodule {
+          options.x = gm.mkOption {
+            type = t.int;
+            default = 1;
+          };
+        };
+        rewrites = {
+          null = null;
+          an-integer = 5;
+          a-set = { };
+          a-functor-returning-an-integer = {
+            __functor = _: 5;
+          };
+          a-functor-returning-itself = {
+            __functor = self: self;
+          };
+        };
+        door =
+          v:
+          gm.mkOptionType (
+            builtins.removeAttrs (base // { substSubModules = v; }) [
+              "functor"
+              "typeMerge"
+              "__mint"
+              "__okAt"
+              "__payload"
+              "__sealed"
+              "__typeSelf"
+            ]
+          );
+        read =
+          eng: v:
+          let
+            mods = mkOption: [
+              {
+                options.o = mkOption {
+                  type = door v;
+                  default = { };
+                };
+                config.o.x = 2;
+              }
+            ];
+          in
+          force (
+            if eng == "np" then
+              (nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption; }).config.o
+            else
+              (gm.evalModuleTree { } (mods gm.mkOption)).config.o
+          );
+      in
+      nixpkgsLib.listToAttrs (
+        nixpkgsLib.concatMap
+          (
+            eng:
+            nixpkgsLib.mapAttrsToList (
+              n: v:
+              nixpkgsLib.nameValuePair "test-${eng}-a-copy-rewriting-its-rebuild-to-${n}-is-refused-by-name" {
+                expr = read eng v;
+                expectedError = {
+                  type = "ThrownError";
+                  msg = "^gen-merge: `mkOptionType': the option type `submodule' is a copy of a built record whose `substSubModules' is rewritten to a value that cannot be applied ";
+                };
+              }
+            ) rewrites
+          )
+          [
+            "np"
+            "gen"
+          ]
+      );
   };
 }
