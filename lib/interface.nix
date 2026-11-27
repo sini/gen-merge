@@ -1607,12 +1607,10 @@ let
     then
       # A rewritten rebuild that cannot be applied (gen-prelude's `isApplicable`, which follows a functor
       # to what it returns) is refused by name when it is called, where nixpkgs aborts on the same call.
-      # nixpkgs calls it only over a stated module set, so a copy stating `getSubModules = null` keeps
-      # the base's rebuild, and the refusal stays in the rebuild, never at this door (ADR-0039 (2), (3)).
+      # The refusal is the rebuild, never thrown at this door: nixpkgs calls the field only over a stated
+      # module set, and a copy stating `getSubModules = null` is served (ADR-0039 (2), (3)).
       if prelude.isApplicable substSubModules then
         substructure // { rebuild = substSubModules; }
-      else if (t.getSubModules or null) == null then
-        importedSubstructure t
       else
         substructure
         // {
