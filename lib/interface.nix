@@ -1609,7 +1609,8 @@ let
       # to what it returns) is refused by name when it is called, where nixpkgs aborts on the same call.
       # The refusal is the rebuild, never thrown at this door: nixpkgs calls the field only over a stated
       # module set, and a copy stating `getSubModules = null` is served (ADR-0039 (2), (3)).
-      if prelude.isApplicable substSubModules then
+      # The builtin first: a lambda, the common rewrite, pays no call (+16 B per option without it).
+      if isFunction substSubModules || prelude.isApplicable substSubModules then
         substructure // { rebuild = substSubModules; }
       else
         substructure
