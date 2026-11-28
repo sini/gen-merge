@@ -15027,5 +15027,86 @@ in
             "gen"
           ]
       );
+
+    # A door's return for an unmarked `// { check; verify }` copy of a v2 nixpkgs container states the coherence
+    # that copy declared (den-hoag-8irpj, `rebuildClosed.root`), so its refusal is the raw copy's, by name: in
+    # nixpkgs' `lib.evalModules` nixpkgs' own coherence guard, at the root and inside a union; in gen's engine at
+    # the root, `adHocFold`'s. Both doors, the admitted definition. Red, every cell, with the door's check stating
+    # `isV2MergeCoherent = true` whatever its copy declared: each is then served.
+    flake.testsError.door-container-verify-copy =
+      let
+        gs = t.submodule {
+          key = "door-container-verify-copy-error-gs";
+          options.a = gm.mkOption {
+            type = t.int;
+            default = 0;
+          };
+        };
+        ns = nixpkgsLib.types.submodule {
+          key = "door-container-verify-copy-error-ns";
+          options.a = nixpkgsLib.mkOption {
+            type = nixpkgsLib.types.int;
+            default = 0;
+          };
+        };
+        checkVerify =
+          ty:
+          ty
+          // {
+            check = v: ty.check v && !(builtins.isAttrs v && (v.a or null) == 2);
+            verify = _: null;
+          };
+        inUnion = ty: nixpkgsLib.types.either ty nixpkgsLib.types.int;
+        npRead =
+          ty: v:
+          force
+            (nixpkgsLib.evalModules {
+              modules = [
+                { options.x = nixpkgsLib.mkOption { type = ty; }; }
+                { x = v; }
+              ];
+            }).config.x;
+        genRead =
+          ty: v:
+          force
+            (gm.evalModuleTree { } [
+              { options.x = gm.mkOption { type = ty; }; }
+              { x = v; }
+            ]).config.x;
+        guard =
+          d:
+          "^The option `x' has a type `${d}' that uses\nan ad-hoc `type // \\{ check = \\.\\.\\.; \\}' override, which is incompatible with\nthe v2 merge mechanism\\.\n";
+        cells = door: {
+          "test-${door.name}-attrsOf-of-a-nixpkgs-submodule-in-a-union-meets-nixpkgs-guard" = {
+            expr = npRead (inUnion (door.f (checkVerify (nixpkgsLib.types.attrsOf ns)))) { k.a = 1; };
+            expectedError = {
+              type = "ThrownError";
+              msg = guard "attribute set of \\(submodule\\)";
+            };
+          };
+          "test-${door.name}-either-of-a-gen-submodule-at-the-root-meets-nixpkgs-guard" = {
+            expr = npRead (door.f (checkVerify (nixpkgsLib.types.either gs nixpkgsLib.types.str))) { a = 1; };
+            expectedError = {
+              type = "ThrownError";
+              msg = guard "\\(submodule\\) or string";
+            };
+          };
+          "test-${door.name}-either-of-a-gen-submodule-at-the-root-is-refused-by-name-in-gen" = {
+            expr = genRead (door.f (checkVerify (nixpkgsLib.types.either gs nixpkgsLib.types.str))) { a = 1; };
+            expectedError = {
+              type = "ThrownError";
+              msg = "^gen-merge: the option `x' has a type `\\(submodule\\) or string' that uses an ad-hoc `type // \\{ check = \\.\\.\\.; \\}' override, which the v2 merge protocol refuses; state the check with `addCheck' instead$";
+            };
+          };
+        };
+      in
+      cells {
+        name = "mkOptionType";
+        f = gm.mkOptionType;
+      }
+      // cells {
+        name = "types-mkOptionType";
+        f = t.mkOptionType;
+      };
   };
 }

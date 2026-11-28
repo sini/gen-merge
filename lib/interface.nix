@@ -3919,9 +3919,12 @@ let
       else
         r
         // {
+          # the coherence `t` declared: `adHocChecked`'s predicate without its module-set clause, so an unmarked
+          # `// { check }` copy of a v2 type reads incoherent to nixpkgs' guard as it does raw (ADR-0039 ledger,
+          # 2026-11-24, den-hoag-8irpj); a non-v2 record states no v2 fold, so its check stays coherent
           check = {
             __functor = _: t.check;
-            isV2MergeCoherent = true;
+            isV2MergeCoherent = !(isV2 t) || (t.check.isV2MergeCoherent or false);
           };
           merge = rebuildClosed.verifiedMerge t.verify (
             rebuildClosed.verifiedMerge.lifted t.check (t.merge.__verifiedMerge or t.merge)
