@@ -942,7 +942,7 @@ The carry fold's stated costs, all of them `mergeLeaf`'s:
   throwing fields, so `==` reaches a throw on upstream Nix and Determinate and short-circuits on Lix;
   `anything` and `raw` give the same answer on every evaluator.
 - **A cyclic value overflows.** A hand-written `__mint` on a freshly built cyclic value, defined
-  twice, sends `==` round the cycle and overflows the stack uncatchably: the cyclic-value exception
+  twice, sends `==` round the cycle and overflows the stack uncatchably: the cyclic-value abort
   in [Known byte-mode boundaries](#known-byte-mode-boundaries-deliberate), extended to whole
   attrsets.
 - **Unmarked values are still rebuilt.** A value carrying no `__mint` takes the per-key rebuild, so
@@ -3054,7 +3054,7 @@ two definitions of one build agree whatever else they carry and the head is serv
 `overrideAttrs` callable); that is why derivations alone are opaque in arm 2. On functions it is the
 evaluator's own answer: `[ f f ]` is refused on Nix and Determinate and served on Lix, as nixpkgs'
 `mergeEqualOption` splits. Two structurally equal cyclic values abort uncatchably at arm 3, the
-declared exception below. A construction is never rebuilt: any definition carrying `__mint` sends the
+cyclic-value abort below. A construction is never rebuilt: any definition carrying `__mint` sends the
 fold to arm 3, so a construction is served only where every definition is `==` to the head, and a
 merged body under one mark cannot form (a comparison mints nothing). Mixed shapes reach arm 3 and refuse
 unless `==`.
@@ -3224,12 +3224,17 @@ same modules.
   key is read, so the key set and every other key still read as nixpkgs' do. The price, paid once per
   evaluation of the option, on the first read of that key: `==` walks two equal copies held in
   different slots in full, where nixpkgs' `//` forces neither; a value in one slot is decided
-  unwalked. **An interpreter error inside two equal copies aborts uncatchably at that read, a
-  declared exception to the rule that every refusal is catchable**: `{ a = { p = 1; q = ({ }).nope; }; }`
-  written at two sites aborts with `attribute 'nope' missing` where nixpkgs serves `p`. `tryEval`
-  catches only `throw` and `assert`, so no compare turns the error into a refusal, and the one
-  construction that avoids forcing it, an equality that compares nested sets per sub-key, is a new
-  relation in place of `==` that only moves the abort to the nested read a realization forces anyway.
+  unwalked. **An interpreter error inside two equal copies aborts uncatchably at that read, where
+  nixpkgs serves**: `{ a = { p = 1; q = ({ }).nope; }; }` written at two sites aborts with
+  `attribute 'nope' missing` where nixpkgs serves `p`. This is an open defect (the owner's
+  parity-defect rule, 2026-10-09), not a price and not an enumerated exception. `tryEval` catches
+  only `throw` and `assert`, so no compare turns the error into a refusal. That nixpkgs too aborts
+  once a reader forces `q` is parity at that nested read, not a ground for aborting at `p`. A compare
+  that descends nested sets per sub-key serves `p`, but it changes answers this fold and nixpkgs both
+  give today: a reader comparing the merged value with a binding both definitions wrote
+  (`config.x.a == b`, `b` cyclic) moves from a value to an abort or a refusal, so the compare is
+  kept. A compliant construction needs slot identity, a test of whether two values share one slot
+  that never walks them; that is an unmet requirement, not a proof that no such construction exists.
 
   The same rule, through the same binding (`slotsDiffer`), decides the base module arguments two
   `(submodule …).withArgs` declarations of one option state: one bound value passed by both (one
@@ -3296,8 +3301,7 @@ same modules.
   the application's `//` swaps its operands, and the hub perf-bench reads the copying form's thunk
   and allocation bounds.
 
-- **Two structurally equal CYCLIC values abort uncatchably, a declared exception to the rule that
-  every refusal is catchable.** Nix `==` is not total, and it recurses without bound on a pair of
+- **Two structurally equal CYCLIC values abort uncatchably.** Nix `==` is not total, and it recurses without bound on a pair of
   pointer-distinct, structurally equal cyclic values — `{ a = r; }`,`{ a = r'; }` with `r` and `r'`
   separate bindings of `{ s = r; n = 1; }` — or on any pair whose lockstep `==` reaches a back edge
   before a difference. The class has four members, all exiting
@@ -3311,14 +3315,18 @@ same modules.
   set and every sibling serve.
   `mergeLeaf` and `leafFold` are byte-parity with nixpkgs: its own `mergeEqualOption` aborts
   uncatchably on the identical input. `mergeDescriptorDefault` and the `attrs` fold are the
-  departures — nixpkgs' `//` never compares the shared key, so it silently keeps the last file's
-  cyclic value where these folds abort. The exception is argued, not merely declared: no pure-Nix observation (`typeOf`, attribute
-  names, selection, `==` on non-container leaves) tells a cyclic binding shared by both definitions
-  apart from two freshly built, structurally identical cycles — both unfold to the same infinite
-  tree, so a bounded pre-flight that refuses the latter also refuses the former, which nixpkgs
-  accepts and this fold accepts today, and one that instead accepts on exhaustion is a silent drop
-  past its bound. Every construction changes an answer this fold gives today without deciding the
-  input that aborts, so the abort stands as the exception rather than behind a door.
+  departures — nixpkgs' `//` never compares the shared key, so it serves the last file's cyclic
+  value where these folds abort. At those two sites the abort is an open defect (the owner's
+  parity-defect rule, 2026-10-09), not a price and not an enumerated exception. The compare is kept
+  because the constructions known change answers this fold gives today: no pure-Nix observation
+  (`typeOf`, attribute names, selection, `==` on non-container leaves) tells a cyclic binding shared
+  by both definitions apart from two freshly built, structurally identical cycles — both unfold to
+  the same infinite tree, so a bounded pre-flight that refuses the latter also refuses the former,
+  which nixpkgs accepts and this fold accepts today, and one that instead accepts on exhaustion is a
+  silent drop past its bound; a compare that descends per sub-key regresses a reader comparing the
+  merged value with the binding both definitions wrote. A compliant construction needs slot
+  identity, a test of whether two values share one slot that never walks them; that is an unmet
+  requirement, not a proof that no such construction exists.
 
 - **A type's docs phrase elides past 128 composing nodes.** An exported type's `description` and
   `descriptionClass` are nixpkgs' phrase and class for the same construction, derived once at the
