@@ -2615,24 +2615,6 @@ let
     in
     go importedTypeWalkFuel;
   owedCopyAt = copyAt replacesVerify;
-  copyAtNesting =
-    owed:
-    let
-      go =
-        fuel: t:
-        isAttrs t
-        && (
-          owed t
-          ||
-            fuel > 0
-            && !(t ? declaresNesting)
-            && !(isNesting t)
-            && prelude.any (go (fuel - 1)) (
-              if t._type or null == "option" then [ t.type ] else declaredWrapped t
-            )
-        );
-    in
-    go importedTypeWalkFuel;
   # an owed copy, or a stock submodule whose nested options may hold one (`guardedSubmodule`)
   guardedCopyAt = copyAt (x: replacesVerify x || isStockSubmodule x);
   guardedBelow = t: prelude.any guardedCopyAt (declaredWrapped t);
@@ -4727,7 +4709,30 @@ let
           if answersBase e then
             selfAnswering e
           # a foreign element holding below it a copy THIS entry closes (`answersBase`: a met record's verify too)
-          else if !(e ? carries) && copyAtNesting answersBase e then
+          else if
+            !(e ? carries)
+            && (
+              # `copyAt answersBase`, its reach shared with `declaresNestingAt`'s: it stops below a gen nesting element
+              # and a record answering `declaresNesting`, where that walk stops (bound here, not in the library's `let`,
+              # which every evaluation pays)
+              let
+                go =
+                  fuel: t:
+                  isAttrs t
+                  && (
+                    answersBase t
+                    ||
+                      fuel > 0
+                      && !(t ? declaresNesting)
+                      && !(isNesting t)
+                      && prelude.any (go (fuel - 1)) (
+                        if t._type or null == "option" then [ t.type ] else declaredWrapped t
+                      )
+                  );
+              in
+              go importedTypeWalkFuel e
+            )
+          then
             # a single-element foreign wrapper is closed by this same entry, its own marker answer rebuilt in turn
             # (no second threaded fold); any other foreign element is homed at its position
             (
