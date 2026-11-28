@@ -12901,6 +12901,128 @@ in
           };
         };
       };
+    # A `verify` is read on the settled value through a threaded nixpkgs wrapper and at the meet (den-hoag-x7qe5; owner
+    # Ruling 8, ADR-0039), so a value it rejects is refused by its own text where nixpkgs, which reads no `verify`,
+    # serves it. The shapes are `./tests/_fixtures/threaded-verify-carriage.nix`; the served cells are
+    # `./tests/threaded-verify-carriage.nix`. A wrapper's own check over a threaded copy stays the wrapper's, refused
+    # under the wrapper's name. RED before the landing: the 16 cells refusing by the verify's text, but in gen's engine
+    # the door copies declared last (refused there already) and in nixpkgs' `uniqUniqDoorCopyFirst`; the wrapper-check
+    # cells were green there, and hold that the wrapper's check is kept. Each one-edit revert of the construction reds
+    # its own cells: the thread's functor rebuild handed back whole (the six wrapper-check cells over a copy), the met
+    # record's `typeMerge` re-meeting the bare meet (the four door-copy and met-record cells in nixpkgs' engine), a met
+    # record not closed below the thread (`attrsUniqDoorMember` and `uniqUniqDoorCopy*` in gen's engine), and the
+    # recursive arm's walk asking for a copy only (`uniqUniqDoorCopy*` in gen's engine).
+    flake.testsError.threaded-verify-carriage =
+      let
+        fx = import ./tests/_fixtures/threaded-verify-carriage.nix {
+          gm = genMerge;
+          nl = nixpkgsLib;
+        };
+        refused = engine: name: msg: {
+          expr = fx.run engine name;
+          expectedError = {
+            type = "ThrownError";
+            inherit msg;
+          };
+        };
+        byVerify =
+          at:
+          "^gen-merge: a definition for option `${at}' is not of the expected type: the verify rejects a = 2$";
+        byMember =
+          at:
+          "^gen-merge: a definition for option `${at}' is not of the expected type: the verify rejects b = 5$";
+        byUnique =
+          at: "^gen-merge: a definition for option `${at}' is not of type `unique', in `<unknown-file>'";
+        byEither =
+          prefix: at: tail:
+          "^${prefix}definition for option `${at}' is not of type `\\(submodule\\) or string'\\. TypeError: ${tail}";
+      in
+      {
+        test-a-threaded-copy-refuses-by-its-verify = refused "gen" "uniqCopy" (byVerify "x");
+        test-a-copy-threaded-twice-refuses-by-its-verify = refused "gen" "uniqUniqCopy" (byVerify "x");
+        # reading one member forces no other (the served `lazy` cell); forcing the whole value reaches the throw
+        test-a-threaded-copy-forced-whole-reaches-the-unread-member =
+          refused "gen" "uniqCopyLazy"
+            "threaded-verify-carriage: b forced";
+        test-a-met-door-copy-refuses-by-its-verify = refused "gen" "doorBoth" (byVerify "x\\.k");
+        test-a-met-types-door-copy-refuses-by-its-verify = refused "gen" "typesDoorBoth" (byVerify "x\\.k");
+        test-a-raw-copy-third-of-three-refuses-by-its-verify = refused "gen" "rawThird" (byVerify "x\\.k");
+        test-a-raw-copy-third-of-three-refuses-by-its-verify-in-nixpkgs = refused "np" "rawThird" (
+          byVerify "x\\.k"
+        );
+        test-a-both-copy-declared-last-refuses-by-its-check =
+          refused "gen" "doorBothLast"
+            "^gen-merge: a definition for option `x\\.k' is not of type `\\(submodule\\) or string', in `<unknown-file>'";
+        test-a-both-copy-declared-last-refuses-by-its-check-in-nixpkgs = refused "np" "doorBothLast" (
+          byEither "A " "x\\.k" "a definition is rejected by the check of a declaration"
+        );
+        test-a-member-reading-verify-refuses-a-rejected-member = refused "gen" "rawThirdMemberBad" (
+          byMember "x\\.k"
+        );
+        test-a-member-reading-verify-refuses-a-rejected-member-in-nixpkgs =
+          refused "np" "rawThirdMemberBad"
+            (byMember "x\\.k");
+        test-a-wrapper-check-over-a-threaded-copy-refuses-by-the-wrapper =
+          refused "gen" "checkOverUniqCopy"
+            (byUnique "x");
+        test-a-wrapper-overlay-over-a-threaded-copy-refuses-by-the-wrapper =
+          refused "gen" "overlayOverUniqCopy"
+            (byUnique "x");
+        test-a-wrapper-check-over-a-threaded-copy-in-attrs-refuses-by-the-wrapper =
+          refused "gen" "checkOverUniqCopyInAttrs"
+            (byUnique "x\\.k");
+        test-a-wrapper-check-over-a-threaded-door-copy-refuses-by-the-wrapper =
+          refused "gen" "checkOverUniqDoorCopy"
+            (byUnique "x");
+        test-a-wrapper-check-over-a-plain-element-refuses-by-the-wrapper =
+          refused "gen" "checkOverUniqPlain"
+            (byUnique "x");
+        test-a-wrapper-overlay-over-a-plain-element-refuses-by-the-wrapper =
+          refused "gen" "overlayOverUniqPlain"
+            (byUnique "x");
+        test-a-wrapper-check-over-a-plain-element-in-attrs-refuses-by-the-wrapper =
+          refused "gen" "checkOverUniqPlainInAttrs"
+            (byUnique "x\\.k");
+        test-a-wrapper-check-closed-in-place-refuses-by-the-wrapper =
+          refused "gen" "uniqCheckOverUniqCopy"
+            (byUnique "x");
+        test-a-wrapper-check-closed-in-place-over-a-door-copy-refuses-by-the-wrapper =
+          refused "gen" "uniqCheckOverUniqDoorCopy"
+            (byUnique "x");
+        test-a-wrapper-check-closed-in-place-refuses-by-the-verify =
+          refused "gen" "uniqCheckOverUniqCopyVerify"
+            (byVerify "x");
+        test-door-copies-declared-last-refuse-by-the-verify = refused "gen" "twoDoorCopiesLast" (
+          byVerify "x"
+        );
+        test-door-copies-declared-last-refuse-by-the-verify-in-nixpkgs = refused "np" "twoDoorCopiesLast" (
+          byEither "A " "x" "the verify rejects a = 2"
+        );
+        test-a-door-copy-declared-last-refuses-by-the-verify = refused "gen" "oneDoorCopyLast" (
+          byVerify "x"
+        );
+        test-a-door-copy-declared-last-refuses-by-the-verify-in-nixpkgs = refused "np" "oneDoorCopyLast" (
+          byEither "A " "x" "the verify rejects a = 2"
+        );
+        test-a-met-record-below-a-threaded-wrapper-refuses-by-the-member-verify =
+          refused "gen" "attrsUniqDoorMember"
+            (byMember "x\\.k");
+        test-a-met-record-below-a-threaded-wrapper-refuses-by-the-member-verify-in-nixpkgs =
+          refused "np" "attrsUniqDoorMember"
+            (byMember "x\\.k");
+        test-a-met-record-below-two-threaded-wrappers-refuses-by-the-verify =
+          refused "gen" "uniqUniqDoorCopyThird"
+            (byVerify "x");
+        test-a-met-record-below-two-threaded-wrappers-refuses-by-the-verify-in-nixpkgs =
+          refused "np" "uniqUniqDoorCopyThird"
+            (byVerify "x");
+        test-a-met-record-first-below-two-threaded-wrappers-refuses-by-the-verify =
+          refused "gen" "uniqUniqDoorCopyFirst"
+            (byVerify "x");
+        test-a-met-record-first-below-two-threaded-wrappers-refuses-by-the-verify-in-nixpkgs =
+          refused "np" "uniqUniqDoorCopyFirst"
+            (byVerify "x");
+      };
     # A `carries` stated by hand that a read has no answer of the record's own for is refused by name,
     # catchably, at the read (den-hoag-l4bv5, ADR-0025 item 1): each cell below was an uncatchable
     # `attribute … missing`, `expected a set` or `elemAt` abort before. The refusal text is written at

@@ -2615,6 +2615,24 @@ let
     in
     go importedTypeWalkFuel;
   owedCopyAt = copyAt replacesVerify;
+  copyAtNesting =
+    owed:
+    let
+      go =
+        fuel: t:
+        isAttrs t
+        && (
+          owed t
+          ||
+            fuel > 0
+            && !(t ? declaresNesting)
+            && !(isNesting t)
+            && prelude.any (go (fuel - 1)) (
+              if t._type or null == "option" then [ t.type ] else declaredWrapped t
+            )
+        );
+    in
+    go importedTypeWalkFuel;
   # an owed copy, or a stock submodule whose nested options may hold one (`guardedSubmodule`)
   guardedCopyAt = copyAt (x: replacesVerify x || isStockSubmodule x);
   guardedBelow = t: prelude.any guardedCopyAt (declaredWrapped t);
@@ -3267,7 +3285,7 @@ let
         # re-homed as before
         (
           if importedRehomeAt door loc t == null then
-            threadedForeignWith threads door loc t
+            threadedForeignWith threads door loc (selfAnsweringOver door loc t)
           else
             homedAt door loc t
         )
@@ -4663,7 +4681,78 @@ let
   # rebuild of a sibling is the same class. PU is not built; no construction is in view.
   threadedForeign =
     door: loc0: t:
-    threadedForeignWith (threadsAt door loc0 t) door loc0 t;
+    threadedForeignWith (threadsAt door loc0 t) door loc0 (selfAnsweringOver door loc0 t);
+  # x7qe5 M3: a raw `// { verify }` copy inherits its base's `substSubModules`, whose closure answers the thread marker
+  # with the BASE (`exportTypeWith`'s `rebuild`); closed here so the copy answers with itself, as a gen element does.
+  # A met record stating the meet's `verify` (`meetOf`'s `verified`) inherits its JOIN's rebuild the same way.
+  answersBase = x: replacesVerify x || x ? __meetJoin && x ? verify;
+  selfAnswering =
+    x:
+    if
+      isAttrs x
+      && answersBase x
+      && (isFunction (x.substSubModules or null) || (x.substSubModules or null) ? __functor)
+      && !(x ? __genSelfAnswer)
+    then
+      let
+        x1 = x // {
+          __genSelfAnswer = true;
+          substSubModules =
+            m:
+            let
+              f = threadElementOf m;
+            in
+            if f != null then f x1 else x.substSubModules m;
+        };
+      in
+      x1
+    else
+      x;
+  # the declared element, closed (a copy) or homed at its position (a foreign container holding an owed copy below,
+  # which re-homing or this same thread entry closes in turn); any other element is left as declared
+  selfAnsweringOver =
+    door: loc: t:
+    let
+      # `carriedAt "element"`, read as it reads a record carrying no role (a threaded container is foreign)
+      e = if t ? carries then carriedAt "element" t else t.functor.payload.elemType or null;
+    in
+    # presence first: a declared element stating no `verify` that carries a role (a gen record) owes nothing here, and
+    # pays one test; only a copy, or a foreign record that may hold one below, binds more
+    if !(isAttrs e) || !(e ? verify) && e ? carries then
+      t
+    else
+      let
+        f = t.functor or null;
+        e1 =
+          if answersBase e then
+            selfAnswering e
+          # a foreign element holding below it a copy THIS entry closes (`answersBase`: a met record's verify too)
+          else if !(e ? carries) && copyAtNesting answersBase e then
+            # a single-element foreign wrapper is closed by this same entry, its own marker answer rebuilt in turn
+            # (no second threaded fold); any other foreign element is homed at its position
+            (
+              if isAttrs (e.functor.payload.elemType or null) then
+                selfAnsweringOver door loc e
+              else
+                homedAt door loc e
+            )
+          else
+            null;
+        x =
+          if e1 != null && isAttrs f && isFunction (f.type or null) && (f.payload or null) ? elemType then
+            f.type (f.payload // { elemType = e1; })
+          else
+            null;
+      in
+      # x7qe5 C1: the wrapper as declared, only its answer to the thread marker rebuilt: its own check, merge and every
+      # field its functor does not rebuild are kept (np.addCheck and a `//` overlay keep the base's functor)
+      if isAttrs x then
+        t
+        // {
+          substSubModules = m: if threadElementOf m != null then x.substSubModules m else t.substSubModules m;
+        }
+      else
+        t;
   threadedForeignWith =
     threads: door: loc0: t:
     let
@@ -4676,7 +4765,7 @@ let
         e
         // {
           check =
-            if e ? verify then
+            if e ? verify && !(e ? carries) then
               (v: e.verify v == null)
             else if e ? admits then
               e.admits
@@ -6872,6 +6961,46 @@ let
   # A redeclared option accepts a definition only where EVERY declared check accepts it. `meetOf j os`
   # is the join `j` (the carrier: its fold, name, functor) restricted by each check in `os`, published as
   # a witnessed rewrite (`check` is not `_checkWitness`), so every later step sees it as owed.
+  # x7qe5 C2: `meetOf`'s exported `typeMerge` over join `j`: a later step meets the record THIS meet returned (`self`,
+  # its `verified` record where it binds one), so a `verify` it owes on the merged value is owed again at every pairwise
+  # step a foreign engine folds. Bound here, not in `meetOf`'s `let`, which every meet pays (ADR-0032)
+  metTypeMerge =
+    j: self: f:
+    let
+      # a foreign relation's assert is no answer (`joinInRebuiltPartner`'s `tryEval`). A join that is itself
+      # a met or held record is asked of its root join, past every met or held record a fold built over it: the
+      # answer is met with this record, whose check conjoins each of theirs and whose functor is theirs
+      asked = builtins.tryEval (
+        if j ? __meetJoin then
+          (
+            let
+              root = t: if t ? __meetJoin then root t.__meetJoin else callerTypeMerge t f;
+            in
+            root j.__meetJoin
+          )
+        else
+          callerTypeMerge j f
+      );
+      r = if asked.success then asked.value else null;
+    in
+    # the step's own operands owed beside this record: the partner nixpkgs hands it is a declaration of the option
+    if r == null then
+      null
+    else
+      metWith.core false r (
+        [ self ]
+        ++ (
+          # the partner's DECLARATION, as the export's derived arm reads it: the slot a door copy states
+          # (`__declared`), else the partner its functor recovers (`importedPartner`); none for a bare functor
+          if isAttrs f && f ? __declared then
+            [ f.__declared ]
+          else
+            let
+              p = importedPartner f;
+            in
+            if isAttrs p then [ p ] else [ ]
+        )
+      );
   meetOf =
     j: os:
     let
@@ -6888,7 +7017,7 @@ let
         let
           c = direct (o.check.__verifyProjection or (o.check or o.admits));
         in
-        if !(o ? verify) || !(o ? typeMergeRel) || replacesVerify o then
+        if !(o ? verify) || !(o ? typeMergeRel) || o ? carries || replacesVerify o then
           c
         else if o ? _checkWitness && o.check == o._checkWitness then
           (v: o.verify v == null)
@@ -6995,43 +7124,7 @@ let
           # owes it relativised. Where every step's relation answers at the top constructor, the fold is then
           # the same in every order; `lib/types.nix`'s `importLeaf` still meets through `meetOf` directly, which
           # can only over-refuse.
-          typeMerge =
-            f:
-            let
-              # a foreign relation's assert is no answer (`joinInRebuiltPartner`'s `tryEval`). A join that is itself
-              # a met or held record is asked of its root join, past every met or held record a fold built over it: the
-              # answer is met with this record, whose check conjoins each of theirs and whose functor is theirs
-              asked = builtins.tryEval (
-                if j ? __meetJoin then
-                  (
-                    let
-                      root = t: if t ? __meetJoin then root t.__meetJoin else callerTypeMerge t f;
-                    in
-                    root j.__meetJoin
-                  )
-                else
-                  callerTypeMerge j f
-              );
-              r = if asked.success then asked.value else null;
-            in
-            # the step's own operands owed beside this record: the partner nixpkgs hands it is a declaration of the option
-            if r == null then
-              null
-            else
-              metWith.core false r (
-                [ met ]
-                ++ (
-                  # the partner's DECLARATION, as the export's derived arm reads it: the slot a door copy states
-                  # (`__declared`), else the partner its functor recovers (`importedPartner`); none for a bare functor
-                  if isAttrs f && f ? __declared then
-                    [ f.__declared ]
-                  else
-                    let
-                      p = importedPartner f;
-                    in
-                    if isAttrs p then [ p ] else [ ]
-                )
-              );
+          typeMerge = metTypeMerge j met;
           ${if types ? mkIdentity && j ? __mint then "__mint" else null} = ids.__mint;
           ${if types ? mkIdentity && j ? __mint then "__payload" else null} = ids.__payload;
           ${if types ? mkIdentity && j ? __mint then "__sealed" else null} = ids.__sealed;
@@ -7046,7 +7139,9 @@ let
     # a `verify` no completion's check states: a foreign operand's, or a gen `//` copy's that replaced its completion's
     # (`replacesVerify`). A definition alone is not the value it refines (den-hoag-5f99v). The test is spelled inline
     # here and in `vf`, which only the verified record binds: a binding in this `let` is paid by every meet (ADR-0032)
-    if !(builtins.any (o: o ? verify && (!(o ? typeMergeRel) || replacesVerify o)) os) then
+    if
+      !(builtins.any (o: o ? verify && (!(o ? typeMergeRel) || o ? carries || replacesVerify o)) os)
+    then
       met
     else
       let
@@ -7056,7 +7151,7 @@ let
           v:
           builtins.foldl' (
             e: o:
-            if e != null || !(o ? verify && (!(o ? typeMergeRel) || replacesVerify o)) then
+            if e != null || !(o ? verify && (!(o ? typeMergeRel) || o ? carries || replacesVerify o)) then
               e
             else
               (
@@ -7068,6 +7163,7 @@ let
           ) null os;
         verified = met // {
           verify = vf;
+          typeMerge = metTypeMerge j verified;
           # stated where a fold asks membership: a v2 merge's rejection in `headError`, so a union choosing its member by
           # it moves on to the next one; a non-v2 join is lifted, its own check per definition, as `rebuildClosed.verify`
           # lifts one (den-hoag-5f99v)
@@ -7666,7 +7762,7 @@ let
           direct = c: if isAttrs c && c ? _fn then c._fn else c;
           c = direct (o.check.__verifyProjection or (o.check or o.admits));
           d =
-            if !(o ? verify) || !(o ? typeMergeRel) || replacesVerify o then
+            if !(o ? verify) || !(o ? typeMergeRel) || o ? carries || replacesVerify o then
               c
             else if o ? _checkWitness && o.check == o._checkWitness then
               (v: o.verify v == null)
@@ -7676,7 +7772,7 @@ let
         if !(o ? __stockCheck) then d else (v: d v || !(direct o.__stockCheck v));
       lint =
         o:
-        if o ? verify && (!(o ? typeMergeRel) || replacesVerify o) then
+        if o ? verify && (!(o ? typeMergeRel) || o ? carries || replacesVerify o) then
           let
             st =
               if o ? __stockCheck then
