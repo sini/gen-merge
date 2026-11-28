@@ -134,6 +134,8 @@ let
         t.deferredModule
         (t.enum "e" [ "a" ])
         ((t.submodule { }).withArgs { })
+        # a completed `mkType` record, which carries its leaf seal (den-hoag-oqqa5 K1)
+        (t.defineType (t.mkType { name = "nm"; }))
       ]
     )
   );

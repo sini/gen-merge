@@ -224,6 +224,8 @@ let
     ];
     tied = [
       "typeMergeRel"
+      # `mkType`'s leaf-seal state, which speaks of the base's relation (den-hoag-oqqa5)
+      "__leafSeal"
       "recarry"
       "retainedRelation"
       "withArgs"
