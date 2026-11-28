@@ -14953,8 +14953,10 @@ in
     # A copy of a built submodule record re-entered through gen's `mkOptionType` door, its
     # `substSubModules` rewritten to a value that cannot be applied, is refused by name when an option
     # of its type is rebuilt, in both engines, where nixpkgs aborts on its own twin (parity-defect rule
-    # (3): silent or abort to a named refusal). Before, `5` and `{ }` kept the base's rebuild unannounced
-    # and the two functors aborted. The served rows, an applicable rewrite and a copy stating no module
+    # (3): silent or abort to a named refusal). Before, `5`, `{ }` and `null` kept the base's rebuild
+    # unannounced and a functor returning `5` aborted. A functor returning itself is not here: it aborts
+    # (stack overflow) as on main and in nixpkgs, since refusing it would need a depth bound, barred at this
+    # interface (ADR-0033; the mly8e ceiling, abort for abort). The served rows, an applicable rewrite and a copy stating no module
     # set: `ci/tests/nixpkgs-protocol.nix`.
     flake.testsError.copy-rebuild =
       let
@@ -14970,9 +14972,6 @@ in
           a-set = { };
           a-functor-returning-an-integer = {
             __functor = _: 5;
-          };
-          a-functor-returning-itself = {
-            __functor = self: self;
           };
         };
         door =

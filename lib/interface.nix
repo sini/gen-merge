@@ -1605,25 +1605,30 @@ let
       && t ? substSubModules
       && substSubModules != _substSubModulesWitness
     then
-      # A rewritten rebuild that cannot be applied (gen-prelude's `isApplicable`, which follows a functor
+      # A rewritten rebuild that cannot be applied (gen-prelude's `applicability`, which follows a functor
       # to what it returns) is refused by name when it is called, where nixpkgs aborts on the same call.
-      # The refusal is the rebuild, never thrown at this door: nixpkgs calls the field only over a stated
-      # module set, and a copy stating `getSubModules = null` is served (ADR-0039 (2), (3)).
+      # The test is the rebuild's own thunk, so a functor's body runs only where nixpkgs calls the field,
+      # over a stated module set (ADR-0039 (2), (3)). Only a `false` verdict refuses: a chain the walk's
+      # fuel does not reach is applied as given, as nixpkgs applies it, since a depth refusal is barred at
+      # this interface (ADR-0033); a functor returning itself therefore aborts here as in nixpkgs.
       # The builtin first: a lambda, the common rewrite, pays no call (+16 B per option without it).
-      if isFunction substSubModules || prelude.isApplicable substSubModules then
+      if isFunction substSubModules then
         substructure // { rebuild = substSubModules; }
       else
         substructure
         // {
           rebuild =
-            _m:
-            throw (
-              "gen-merge: `mkOptionType': the option type `${nameOf t}' is a copy of a built record whose `substSubModules' "
-              + "is rewritten to a value that cannot be applied (not a function, nor a functor returning one). "
-              + "The copy states a module set (`getSubModules'), and an option of its type is rebuilt over that set "
-              + "by that `substSubModules', as in the module system it comes from. Make `substSubModules' a function "
-              + "returning an option type, or state `getSubModules = null' where the copy carries no module set"
-            );
+            if (prelude.applicability substSubModules).verdict != false then
+              substSubModules
+            else
+              _m:
+              throw (
+                "gen-merge: `mkOptionType': the option type `${nameOf t}' is a copy of a built record whose `substSubModules' "
+                + "is rewritten to a value that cannot be applied (not a function, nor a functor returning one). "
+                + "The copy states a module set (`getSubModules'), and an option of its type is rebuilt over that set "
+                + "by that `substSubModules', as in the module system it comes from. Make `substSubModules' a function "
+                + "returning an option type, or state `getSubModules = null' where the copy carries no module set"
+              );
         }
     else
       importedSubstructure t;

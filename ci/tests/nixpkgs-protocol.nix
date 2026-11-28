@@ -1918,6 +1918,124 @@ in
         };
       };
 
+    # The same door copy, with a rewrite whose applicability the door's walk cannot settle, or must not
+    # read: a chain of 33 or 40 `__functor` steps ending in the `mark` rebuild is applied as given (past
+    # gen-prelude's 32-step fuel; a depth refusal is barred at this interface, ADR-0033), and a functor
+    # that throws when applied, over a copy stating `getSubModules = null`, is never run, so the option,
+    # its type's name and its description are served as nixpkgs serves them. Both engines.
+    test-a-door-copy-applies-a-chain-past-the-walks-fuel-and-never-runs-a-functor-without-a-module-set =
+      let
+        base = gmT.submodule {
+          options.x = genMerge.mkOption {
+            type = gmT.int;
+            default = 1;
+          };
+        };
+        mark =
+          m:
+          base.substSubModules (
+            m
+            ++ [
+              {
+                options.y = genMerge.mkOption {
+                  type = gmT.int;
+                  default = 7;
+                };
+              }
+            ]
+          );
+        chain = k: if k == 0 then mark else { __functor = _: chain (k - 1); };
+        copies = {
+          chain33.substSubModules = chain 33;
+          chain40.substSubModules = chain 40;
+          throwingNoModuleSet = {
+            substSubModules = {
+              __functor = _: throw "nixpkgs-protocol: the copy's functor was run";
+            };
+            getSubModules = null;
+          };
+          lambdaNoModuleSet = {
+            substSubModules = m: base.substSubModules m;
+            getSubModules = null;
+          };
+        };
+        door =
+          over:
+          genMerge.mkOptionType (
+            builtins.removeAttrs (base // over) [
+              "functor"
+              "typeMerge"
+              "__mint"
+              "__okAt"
+              "__payload"
+              "__sealed"
+              "__typeSelf"
+            ]
+          );
+        eval =
+          eng: over:
+          let
+            mods = mkOption: [
+              {
+                options.o = mkOption {
+                  type = door over;
+                  default = { };
+                };
+                config.o.x = 2;
+              }
+            ];
+          in
+          if eng == "np" then
+            nixpkgsLib.evalModules { modules = mods nixpkgsLib.mkOption; }
+          else
+            genMerge.evalModuleTree { } (mods genMerge.mkOption);
+        read = eng: over: {
+          inherit ((eval eng over).config.o) x;
+          y = (eval eng over).config.o.y or "absent";
+        };
+        # the throwing copy's type reads as the lambda copy's does, in the same engine
+        typeReads =
+          eng:
+          let
+            ty = over: (eval eng over).options.o.type;
+          in
+          {
+            name = (ty copies.throwingNoModuleSet).name == (ty copies.lambdaNoModuleSet).name;
+            description =
+              (ty copies.throwingNoModuleSet).description == (ty copies.lambdaNoModuleSet).description;
+          };
+        both = f: {
+          gen = f "gen";
+          np = f "np";
+        };
+      in
+      {
+        expr = {
+          chain33 = both (e: read e copies.chain33);
+          chain40 = both (e: read e copies.chain40);
+          throwingNoModuleSet = both (e: read e copies.throwingNoModuleSet);
+          throwingNoModuleSetType = both typeReads;
+        };
+        expected = {
+          chain33 = both (_: {
+            x = 2;
+            y = 7;
+          });
+          chain40 = both (_: {
+            x = 2;
+            y = 7;
+          });
+          throwingNoModuleSet = both (_: {
+            x = 2;
+            y = "absent";
+          });
+          throwingNoModuleSetType = both (_: {
+            name = true;
+            description = true;
+          });
+        };
+      };
+
     # ── THE TREE-AS-A-TYPE IS AN OPTION TYPE (den-hoag-foreign-mount-parity-knhyg) ──────────────
     # `(evalModuleTree …).type` is built at the crossing site (`defineType`), under nixpkgs' name for
     # a type whose definitions are modules, `submodule`, so it answers the whole protocol a foreign

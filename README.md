@@ -1083,12 +1083,16 @@ outer type's `substSubModules` on **every** option whose type states a module se
 more. A stated `substSubModules` that answers no option type (`null`, a bare attrset) is refused by
 name where gen's evaluation rebuilds it, and aborts in `lib.evalModules` as it does over a nixpkgs
 type; the base's rebuild no longer serves it silently. A copy re-entered through `mkOptionType` whose
-rewritten `substSubModules` cannot be applied (`null`, `5`, a bare attrset, a functor not returning a
-function: gen-prelude's `isApplicable`) is refused by name when an option of its type is rebuilt, in
-gen's evaluation and in `lib.evalModules` alike, where nixpkgs aborts on its own twin. A copy stating
-`getSubModules = null` is never rebuilt, as nixpkgs never calls the field there, and keeps its base's
-rebuild (`ci/tests-error.nix`, `copy-rebuild`;
-`nixpkgs-protocol.test-a-door-copy-takes-an-applicable-rebuild-and-never-calls-one-without-a-module-set`).
+rewritten `substSubModules` cannot be applied (`null`, `5`, a bare attrset, a functor whose chain ends in
+a non-function: gen-prelude's `applicability` verdict `false`) is refused by name when an option of its
+type is rebuilt, in gen's evaluation and in `lib.evalModules` alike, where nixpkgs aborts on its own
+twin. The test runs inside the rebuild, so a functor is never applied where nixpkgs never calls the
+field: a copy stating `getSubModules = null` keeps its base's rebuild and is served. A chain longer than
+the walk's fuel (32 `__functor` steps) is applied as given, as nixpkgs applies it, since a depth refusal
+is barred at this interface; so a functor returning itself aborts, as it does in nixpkgs
+(`ci/tests-error.nix`, `copy-rebuild`;
+`nixpkgs-protocol.test-a-door-copy-takes-an-applicable-rebuild-and-never-calls-one-without-a-module-set`,
+`nixpkgs-protocol.test-a-door-copy-applies-a-chain-past-the-walks-fuel-and-never-runs-a-functor-without-a-module-set`).
 
 The derivation keeps its base's `name` by default, the value vocabulary its messages speak. Its
 identity is `__derivation.id`, which every gen relation reads through `interface.keyOf` and which
