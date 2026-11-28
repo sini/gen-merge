@@ -135,7 +135,7 @@ let
   # merged type its foreign engine cannot read. One knot, tied where the two forms are made.
   mkTypeWith = mkTypeIn null null;
   # `seal`: `"open"` from `mkType` alone, marking the leaf record whose relation answers with the un-exported
-  # `self`, so `defineType`'s fast path seals its completion (`sealedLeaf`, den-hoag-oqqa5); `null` everywhere else,
+  # `self`, so `defineType`'s fast path seals its completion (`sealedTo`, den-hoag-oqqa5); `null` everywhere else,
   # where `self` is already the exported record. `row`: the `interface.embeddings` row the constructor states for
   # this type (`defineEmbedded`).
   mkTypeIn =
@@ -297,40 +297,6 @@ let
         ${if seal == null then null else "__leafSeal"} = seal;
       };
 
-  # A COMPLETION'S OWN LEAF RELATION (den-hoag-oqqa5). `mkType`'s relation answers a same-key gen partner with the
-  # un-exported `self`, so two separate `defineType` completions of one record joined to a bare descriptor and
-  # aborted. The relation `defineType` installs over an open leaf record records its completion as data,
-  # `sealedTo = exported`, and two operands are ONE completion when `closuresFirst` finds their `sealedTo` equal:
-  # every `//` copy carries the relation its completion installed, and two calls allocate two exports' closures.
-  # Two separate completions of a leaf relation of one key are refused by name, as nixpkgs refuses them, and vetoed
-  # by default; every other partner (one completion, a raw or unsealed partner, another key) gets `rel other`, the
-  # answer the relation gave before it was sealed. Conjuncts run cheapest first: the partner's relation and both
-  # exports' closures are read only for a same-key sealed leaf partner.
-  sealedLeaf =
-    exported: rel:
-    rel
-    // {
-      sealedTo = exported;
-      __functor =
-        _: other:
-        if
-          (rel.nullary or false)
-          && isAttrs other
-          && other ? typeMergeRel.sealedTo
-          && !(other ? retainedRelation)
-          && (other.typeMergeRel.nullary or false)
-          && keyOf other == keyOf exported
-          &&
-            interface.closuresFirst [ other.typeMergeRel.sealedTo ] other.typeMergeRel.sealedTo
-            != interface.closuresFirst [ exported ] exported
-        then
-          {
-            refused = "`${nameOf exported}' and `${nameOf other}', two separate `defineType' completions of one name that this relation cannot compare";
-          }
-        else
-          rel other;
-    };
-
   # The gen record alone, answering with itself. This is the substrate vocabulary with nothing of the
   # foreign protocol on it, and it is what the boundary is handed.
   mkType =
@@ -383,14 +349,50 @@ let
               )
             )
           then
-            # an open leaf record is sealed to this completion; two arms, so no other record pays an argument thunk
+            # an open leaf record is sealed to this completion; two arms, so no other record pays an argument thunk.
+            # ★ A COMPLETION'S OWN LEAF RELATION (den-hoag-oqqa5). `mkType`'s relation answers a same-key gen partner
+            # with the un-exported `self`, so two separate `defineType` completions of one record joined to a bare
+            # descriptor and aborted. The relation installed here records its completion as data, `sealedTo =
+            # exported`, and two operands are ONE completion when `closuresFirst` finds their `sealedTo` equal: every
+            # `//` copy carries the relation its completion installed, and two calls allocate two exports' closures.
+            # Two separate completions of a leaf relation of one key are refused by name, as nixpkgs refuses them, and
+            # vetoed by default; every other partner (one completion, a raw or unsealed partner, another key) gets
+            # `rel other`, the answer the relation gave before it was sealed. Conjuncts run cheapest first: the
+            # partner's relation and both exports' closures are read only for a same-key sealed leaf partner. Inline
+            # in this lazy slot, not a named helper: a file-level binding is a thunk every evaluation of the library
+            # pays for, and the slot's `rel` takes the place of the helper's argument thunk.
             if (t.__leafSeal or null) == "open" then
               interface.exportType (
                 core.readsMintedNode exported (
                   t
                   // {
                     __leafSeal = "sealed";
-                    typeMergeRel = sealedLeaf exported t.typeMergeRel;
+                    typeMergeRel =
+                      let
+                        rel = t.typeMergeRel;
+                      in
+                      rel
+                      // {
+                        sealedTo = exported;
+                        __functor =
+                          _: other:
+                          if
+                            (rel.nullary or false)
+                            && isAttrs other
+                            && other ? typeMergeRel.sealedTo
+                            && !(other ? retainedRelation)
+                            && (other.typeMergeRel.nullary or false)
+                            && keyOf other == keyOf exported
+                            &&
+                              interface.closuresFirst [ other.typeMergeRel.sealedTo ] other.typeMergeRel.sealedTo
+                              != interface.closuresFirst [ exported ] exported
+                          then
+                            {
+                              refused = "`${nameOf exported}' and `${nameOf other}', two separate `defineType' completions of one name that this relation cannot compare";
+                            }
+                          else
+                            rel other;
+                      };
                   }
                 )
               )

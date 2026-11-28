@@ -1,5 +1,5 @@
 # TWO SEPARATE `defineType` COMPLETIONS OF ONE `mkType` LEAF RECORD ARE REFUSED; COPIES OF ONE COMPLETION KEEP
-# THEIR ANSWER (`lib/types.nix` `sealedLeaf`, den-hoag-oqqa5).
+# THEIR ANSWER (`lib/types.nix` `defineType`'s `sealedTo` relation, den-hoag-oqqa5).
 #
 # `mkType`'s leaf relation answers a same-key gen partner with the un-exported record, so two completions joined
 # to a bare descriptor and aborted (`attribute 'merge' missing`; nixpkgs' engine: `deprecationMessage`). The
